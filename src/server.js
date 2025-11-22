@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import blocksRoutes from "./routes/blocks/index.js";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
+import { config } from "./config/index.js";
 // import multipart from "@fastify/multipart";
 
 const fastify = Fastify({
@@ -28,7 +29,10 @@ await fastify.register(swaggerUi, { routePrefix: "/docs" });
 fastify.register(blocksRoutes, { prefix: "api/v1/blocks" });
 
 try {
-  await fastify.listen({ port: 3000 });
+  await fastify.listen({
+    port: config.port,
+    host: config.host
+  });
 } catch (err) {
   fastify.log.error(err);
   process.exit(1);
