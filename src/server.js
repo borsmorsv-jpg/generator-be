@@ -3,12 +3,14 @@ import blocksRoutes from "./routes/blocks/index.js";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { config } from "./config/index.js";
+import corsPlugin from './plugins/cors.js';
 // import multipart from "@fastify/multipart";
 
 const fastify = Fastify({
   logger: true,
 });
 
+await fastify.register(corsPlugin);
 await fastify.register(swagger, {
   openapi: {
     info: { title: "Test API", version: "1.0.0" },
