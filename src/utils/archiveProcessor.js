@@ -185,13 +185,8 @@ export function parseTemplateDefinition(definitionContent, fallbackName) {
     const definition = JSON.parse(definitionContent);
 
     return {
-      name: definition.name || fallbackName,
       description: definition.description || "",
-      author: definition.author || "Unknown",
       preview: definition.preview || null,
-      tags: definition.tags || [],
-      dependencies: definition.dependencies || {},
-      createdAt: definition.createdAt || new Date().toISOString(),
     };
   } catch (error) {
     throw new Error(`Failed to parse template definition: ${error.message}`);

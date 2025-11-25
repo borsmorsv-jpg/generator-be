@@ -1,54 +1,71 @@
-import { blocks } from "../../db/schema.js";
+import {blocks, profiles} from "../../db/schema.js";
 import { db, supabase } from "../../db/connection.js";
 import archiveProcessor from "../../utils/archiveProcessor.js";
-import {asc, desc, eq, ilike} from "drizzle-orm";
+import {asc, desc, eq, ilike, count} from "drizzle-orm";
+import {alias} from "drizzle-orm/pg-core";
 
 export const getAllBlocks = async (request, reply) => {
   try {
     const {
       page = 1,
       limit = 10,
-      search = '',
-      sortBy = 'name',
-      sortOrder = 'asc'
+      search = "",
+      sortBy = "name",
+      sortOrder = "asc",
     } = request.query;
 
     const offset = (page - 1) * limit;
 
-    let query = db.select().from(blocks);
+    const createdByProfile = alias(profiles, "created_by_profile");
+    const updatedByProfile = alias(profiles, "updated_by_profile");
 
-    if (search) {
-      query = query.where(ilike(blocks.name, `%${search}%`));
-    }
-
-    const orderByColumn = sortBy === 'createdAt' ? blocks.createdAt : blocks.name;
-    query = query.orderBy(
-        sortOrder === 'desc' ? desc(orderByColumn) : asc(orderByColumn)
-    );
-
-    query = query.limit(limit).offset(offset);
+    const query = db
+        .select({
+          id: blocks.id,
+          name: blocks.name,
+          category: blocks.category,
+          isActive: blocks.isActive,
+          archiveUrl: blocks.archiveUrl,
+          definition: blocks.definition,
+          createdAt: blocks.createdAt,
+          updatedAt: blocks.updatedAt,
+          createdByEmail: createdByProfile.email,
+          createdByUsername: createdByProfile.username,
+          updatedByEmail: updatedByProfile.email,
+          updatedByUsername: updatedByProfile.username,
+        })
+        .from(blocks)
+        .leftJoin(createdByProfile, eq(blocks.createdBy, createdByProfile.userId))
+        .leftJoin(updatedByProfile, eq(blocks.updatedBy, updatedByProfile.userId))
+        .where(search ? ilike(blocks.name, `%${search}%`) : undefined)
+        .orderBy(
+            sortOrder === "desc"
+                ? desc(sortBy === "createdAt" ? blocks.createdAt : blocks.name)
+                : asc(sortBy === "createdAt" ? blocks.createdAt : blocks.name)
+        )
+        .limit(limit)
+        .offset(offset);
 
     const data = await query;
 
-    let countQuery = db.select().from(blocks);
-    if (search) {
-      countQuery = countQuery.where(ilike(blocks.name, `%${search}%`));
-    }
-    const totalCount = await countQuery.then(rows => rows.length);
+    const [{ count: totalCount }] = await db
+        .select({ count: count() })
+        .from(blocks)
+        .where(search ? ilike(blocks.name, `%${search}%`) : undefined);
 
     const totalPages = Math.ceil(totalCount / limit);
 
     return reply.code(200).send({
       success: true,
-      data: data,
+      data,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: Number(page),
+        limit: Number(limit),
         totalCount,
         totalPages,
         hasNext: page < totalPages,
-        hasPrev: page > 1
-      }
+        hasPrev: page > 1,
+      },
     });
   } catch (error) {
     reply.code(400).send({
@@ -63,6 +80,7 @@ export const createBlock = async (request, reply) => {
     const fileData = request.body.file;
     const isActive = request.body.isActive?.value === "true";
     const name = request.body.name?.value;
+    const category = request.body.category?.value;
 
     if (!fileData || !name) {
       return reply.code(400).send({
@@ -114,10 +132,7 @@ export const createBlock = async (request, reply) => {
       archiveSize: archiveBuffer.length,
       template: {
         name: name,
-        version: templateDefinition.version || "1.0.0",
         description: templateDefinition.description || "",
-        author: templateDefinition.author || "",
-        preview: templateDefinition.preview || null,
       },
       files: {
         template: {
@@ -147,8 +162,10 @@ export const createBlock = async (request, reply) => {
       .values({
         name,
         isActive,
+        category,
         archiveUrl,
         definition: blockDefinition,
+        createdBy: "5d9be6fa-8b9c-4095-9568-07b2a5489b12"
       })
       .returning();
 

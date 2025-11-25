@@ -15,6 +15,12 @@ export const createBlockSchema = {
           _buf: { type: "object" },
         },
       },
+      category: {
+        type: "object",
+        properties: {
+          value: { type: "string", minLength: 1 },
+        },
+      },
       name: {
         type: "object",
         properties: {
@@ -29,289 +35,36 @@ export const createBlockSchema = {
       },
     },
   },
-  response: {
-    201: {
-      type: "object",
-      properties: {
-        success: { type: "boolean" },
-        data: {
-          type: "object",
-          properties: {
-            id: { type: "number" },
-            name: { type: "string" },
-            isActive: { type: "boolean" },
-            archiveUrl: { type: "string" },
-            definition: {
-              type: "object",
-              properties: {
-                files: {
-                  type: "object",
-                  properties: {
-                    script: {
-                      type: "object",
-                      properties: {
-                        size: { type: "number" },
-                        lines: { type: "number" }
-                      }
-                    },
-                    styles: {
-                      type: "object",
-                      properties: {
-                        size: { type: "number" },
-                        lines: { type: "number" }
-                      }
-                    },
-                    template: {
-                      type: "object",
-                      properties: {
-                        size: { type: "number" },
-                        lines: { type: "number" }
-                      }
-                    }
-                  }
-                },
-                mimeType: { type: "string" },
-                template: {
-                  type: "object",
-                  properties: {
-                    name: { type: "string" },
-                    author: { type: "string" },
-                    preview: { type: ["string", "null"] },
-                    version: { type: "string" },
-                    description: { type: "string" }
-                  }
-                },
-                validation: {
-                  type: "object",
-                  properties: {
-                    isValid: { type: "boolean" },
-                    totalFiles: { type: "number" },
-                    validatedAt: { type: "string", format: "date-time" }
-                  }
-                },
-                archiveSize: { type: "number" },
-                originalArchive: { type: "string" }
-              }
-            },
-            createdAt: { type: "string", format: "date-time" },
-            updatedAt: { type: "string", format: "date-time" }
-          }
-        }
-      },
-      required: ["success", "data"]
-    },
-  }
 };
 
 export const getAllBlocksSchema = {
+  tags: ["Blocks"],
+  summary: "Get all blocks",
   querystring: {
-    type: 'object',
+    type: "object",
     properties: {
-      page: { type: 'integer', minimum: 1, default: 1 },
-      limit: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
-      search: { type: 'string', default: '' },
-      sortBy: { type: 'string', enum: ['name', 'createdAt', 'updatedAt'], default: 'name' },
-      sortOrder: { type: 'string', enum: ['asc', 'desc'], default: 'asc' }
-    }
-  },
-  response: {
-    200: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        data: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'number' },
-              name: { type: 'string' },
-              isActive: { type: 'boolean' },
-              archiveUrl: { type: 'string' },
-              definition: {
-                type: 'object',
-                properties: {
-                  files: {
-                    type: 'object',
-                    properties: {
-                      script: {
-                        type: 'object',
-                        properties: {
-                          size: { type: 'number' },
-                          lines: { type: 'number' }
-                        }
-                      },
-                      styles: {
-                        type: 'object',
-                        properties: {
-                          size: { type: 'number' },
-                          lines: { type: 'number' }
-                        }
-                      },
-                      template: {
-                        type: 'object',
-                        properties: {
-                          size: { type: 'number' },
-                          lines: { type: 'number' }
-                        }
-                      }
-                    }
-                  },
-                  mimeType: { type: 'string' },
-                  template: {
-                    type: 'object',
-                    properties: {
-                      name: { type: 'string' },
-                      author: { type: 'string' },
-                      preview: {
-                        type: ['string', 'null']
-                      },
-                      version: { type: 'string' },
-                      description: { type: 'string' }
-                    }
-                  },
-                  validation: {
-                    type: 'object',
-                    properties: {
-                      isValid: { type: 'boolean' },
-                      totalFiles: { type: 'number' },
-                      validatedAt: { type: 'string', format: 'date-time' }
-                    }
-                  },
-                  archiveSize: { type: 'number' },
-                  originalArchive: { type: 'string' }
-                }
-              },
-              createdAt: { type: 'string', format: 'date-time' },
-              updatedAt: { type: 'string', format: 'date-time' }
-            }
-          }
-        },
-        pagination: {
-          type: 'object',
-          properties: {
-            page: { type: 'integer' },
-            limit: { type: 'integer' },
-            totalCount: { type: 'integer' },
-            totalPages: { type: 'integer' },
-            hasNext: { type: 'boolean' },
-            hasPrev: { type: 'boolean' }
-          },
-          required: ['page', 'limit', 'totalCount', 'totalPages', 'hasNext', 'hasPrev']
-        }
+      page: { type: "integer", minimum: 1, default: 1 },
+      limit: { type: "integer", minimum: 1, maximum: 100, default: 10 },
+      search: { type: "string", default: "" },
+      sortBy: {
+        type: "string",
+        enum: ["name", "createdAt", "updatedAt"],
+        default: "name",
       },
-      required: ['success', 'data', 'pagination']
+      sortOrder: { type: "string", enum: ["asc", "desc"], default: "asc" },
     },
-    400: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        error: { type: 'string' }
-      },
-      required: ['success', 'error']
-    }
-  }
+  },
 };
-
 
 export const deleteBlockSchema = {
   tags: ["Blocks"],
-  summary: "Delete a block",
+  summary: "Delete block by id",
   description: "Delete a block by ID and remove associated files",
   params: {
     type: "object",
     properties: {
-      id: { type: "integer" }
+      id: { type: "integer" },
     },
-    required: ["id"]
+    required: ["id"],
   },
-  response: {
-    200: {
-      type: "object",
-      properties: {
-        success: { type: "boolean" },
-        data: {
-          type: "object",
-          properties: {
-            id: { type: "number" },
-            name: { type: "string" },
-            isActive: { type: "boolean" },
-            archiveUrl: { type: "string" },
-            definition: {
-              type: "object",
-              properties: {
-                files: {
-                  type: "object",
-                  properties: {
-                    script: {
-                      type: "object",
-                      properties: {
-                        size: { type: "number" },
-                        lines: { type: "number" }
-                      }
-                    },
-                    styles: {
-                      type: "object",
-                      properties: {
-                        size: { type: "number" },
-                        lines: { type: "number" }
-                      }
-                    },
-                    template: {
-                      type: "object",
-                      properties: {
-                        size: { type: "number" },
-                        lines: { type: "number" }
-                      }
-                    }
-                  }
-                },
-                mimeType: { type: "string" },
-                template: {
-                  type: "object",
-                  properties: {
-                    name: { type: "string" },
-                    author: { type: "string" },
-                    preview: { type: ["string", "null"] },
-                    version: { type: "string" },
-                    description: { type: "string" }
-                  }
-                },
-                validation: {
-                  type: "object",
-                  properties: {
-                    isValid: { type: "boolean" },
-                    totalFiles: { type: "number" },
-                    validatedAt: { type: "string", format: "date-time" }
-                  }
-                },
-                archiveSize: { type: "number" },
-                originalArchive: { type: "string" }
-              }
-            },
-            createdAt: { type: "string", format: "date-time" },
-            updatedAt: { type: "string", format: "date-time" }
-          }
-        },
-        message: { type: "string" }
-      },
-      required: ["success", "data", "message"]
-    },
-    400: {
-      type: "object",
-      properties: {
-        success: { type: "boolean" },
-        error: { type: "string" }
-      },
-      required: ["success", "error"]
-    },
-    404: {
-      type: "object",
-      properties: {
-        success: { type: "boolean" },
-        error: { type: "string" }
-      },
-      required: ["success", "error"]
-    }
-  }
 };
