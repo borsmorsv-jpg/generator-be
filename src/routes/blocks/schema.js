@@ -59,7 +59,7 @@ export const getAllBlocksSchema = {
       category: { type: "string" },
       createdBy: { type: "string", format: "uuid" },
       updatedBy: { type: "string", format: "uuid" },
-      ls: { type: "string", format: "date-time" },
+      createdAtFrom: { type: "string", format: "date-time" },
       createdAtTo:   { type: "string", format: "date-time" },
       updatedAtFrom: { type: "string", format: "date-time" },
       updatedAtTo:   { type: "string", format: "date-time" },
