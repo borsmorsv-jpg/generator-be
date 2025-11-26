@@ -44,14 +44,25 @@ export const getAllBlocksSchema = {
     type: "object",
     properties: {
       page: { type: "integer", minimum: 1, default: 1 },
-      limit: { type: "integer", minimum: 1, maximum: 100, default: 10 },
+      limit: { type: "integer", minimum: 1, maximum: 1000, default: 20 },
       search: { type: "string", default: "" },
       sortBy: {
         type: "string",
         enum: ["name", "createdAt", "updatedAt"],
         default: "name",
       },
-      sortOrder: { type: "string", enum: ["asc", "desc"], default: "asc" },
+      sortOrder: {
+        type: "string",
+        enum: ["asc", "desc"],
+        default: "asc",
+      },
+      category: { type: "string" },
+      createdBy: { type: "string", format: "uuid" },
+      updatedBy: { type: "string", format: "uuid" },
+      ls: { type: "string", format: "date-time" },
+      createdAtTo:   { type: "string", format: "date-time" },
+      updatedAtFrom: { type: "string", format: "date-time" },
+      updatedAtTo:   { type: "string", format: "date-time" },
     },
   },
 };
@@ -66,5 +77,46 @@ export const deleteBlockSchema = {
       id: { type: "integer" },
     },
     required: ["id"],
+  },
+};
+
+export const updateBlockSchema = {
+  tags: ["Blocks"],
+  summary: "Update block",
+  description: "Update existing block",
+  consumes: ["multipart/form-data"],
+  params: {
+    type: "object",
+    properties: {
+      id: { type: "integer" },
+    },
+    required: ["id"],
+  },
+  body: {
+    type: "object",
+    properties: {
+      file: {
+        type: "object",
+        properties: {
+          filename: { type: "string" },
+          mimetype: { type: "string" },
+          _buf: { type: "object" },
+        },
+      },
+      category: {
+        type: "object",
+        properties: { value: { type: "string" } },
+      },
+      name: {
+        type: "object",
+        properties: { value: { type: "string" } },
+      },
+      isActive: {
+        type: "object",
+        properties: {
+          value: { type: "string", enum: ["true", "false"] },
+        },
+      },
+    },
   },
 };

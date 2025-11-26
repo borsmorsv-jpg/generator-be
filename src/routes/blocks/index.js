@@ -1,5 +1,5 @@
-import {getAllBlocks, createBlock, deleteBlock} from "./handlers.js";
-import {getAllBlocksSchema, createBlockSchema, deleteBlockSchema} from "./schema.js";
+import {getAllBlocks, createBlock, deleteBlock, updateBlock} from "./handlers.js";
+import {getAllBlocksSchema, createBlockSchema, deleteBlockSchema, updateBlockSchema} from "./schema.js";
 import multipart from "@fastify/multipart";
 
 const routes = async (fastify) => {
@@ -17,6 +17,10 @@ const routes = async (fastify) => {
   fastify.post("/", {
     handler: createBlock,
     schema: createBlockSchema,
+  });
+  fastify.put("/:id", {
+    handler: updateBlock,
+    schema: updateBlockSchema,
   });
   fastify.delete("/:id", {
     handler: deleteBlock,

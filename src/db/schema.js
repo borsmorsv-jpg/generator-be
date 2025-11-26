@@ -20,7 +20,7 @@ export const blockCategory = pgEnum("block_category", [
   "footer",
   "header",
   "hero",
-  "section",
+  "info",
 ]);
 
 export const blocks = pgTable("blocks", {

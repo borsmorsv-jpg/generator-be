@@ -1,23 +1,44 @@
 import {blocks, profiles} from "../../db/schema.js";
 import { db, supabase } from "../../db/connection.js";
 import archiveProcessor from "../../utils/archiveProcessor.js";
-import {asc, desc, eq, ilike, count} from "drizzle-orm";
+import {asc, desc, eq, ilike, count, and} from "drizzle-orm";
 import {alias} from "drizzle-orm/pg-core";
+import {gte, lte} from "zod";
 
 export const getAllBlocks = async (request, reply) => {
   try {
     const {
       page = 1,
-      limit = 10,
+      limit = 20,
       search = "",
       sortBy = "name",
       sortOrder = "asc",
+      category,
+      createdBy,
+      updatedBy,
+      createdAtFrom,
+      createdAtTo,
+      updatedAtFrom,
+      updatedAtTo,
     } = request.query;
 
     const offset = (page - 1) * limit;
 
     const createdByProfile = alias(profiles, "created_by_profile");
     const updatedByProfile = alias(profiles, "updated_by_profile");
+
+    const filters = [];
+
+    if (search) filters.push(ilike(blocks.name, `%${search}%`));
+    if (category) filters.push(eq(blocks.category, category));
+    if (createdBy) filters.push(eq(blocks.createdBy, createdBy));
+    if (updatedBy) filters.push(eq(blocks.updatedBy, updatedBy));
+
+    if (createdAtFrom) filters.push(gte(blocks.createdAt, createdAtFrom));
+    if (createdAtTo) filters.push(lte(blocks.createdAt, createdAtTo));
+
+    if (updatedAtFrom) filters.push(gte(blocks.updatedAt, updatedAtFrom));
+    if (updatedAtTo) filters.push(lte(blocks.updatedAt, updatedAtTo));
 
     const query = db
         .select({
@@ -37,7 +58,7 @@ export const getAllBlocks = async (request, reply) => {
         .from(blocks)
         .leftJoin(createdByProfile, eq(blocks.createdBy, createdByProfile.userId))
         .leftJoin(updatedByProfile, eq(blocks.updatedBy, updatedByProfile.userId))
-        .where(search ? ilike(blocks.name, `%${search}%`) : undefined)
+        .where(filters.length ? and(...filters) : undefined)
         .orderBy(
             sortOrder === "desc"
                 ? desc(sortBy === "createdAt" ? blocks.createdAt : blocks.name)
@@ -51,9 +72,7 @@ export const getAllBlocks = async (request, reply) => {
     const [{ count: totalCount }] = await db
         .select({ count: count() })
         .from(blocks)
-        .where(search ? ilike(blocks.name, `%${search}%`) : undefined);
-
-    const totalPages = Math.ceil(totalCount / limit);
+        .where(filters.length ? and(...filters) : undefined);
 
     return reply.code(200).send({
       success: true,
@@ -62,8 +81,8 @@ export const getAllBlocks = async (request, reply) => {
         page: Number(page),
         limit: Number(limit),
         totalCount,
-        totalPages,
-        hasNext: page < totalPages,
+        totalPages: Math.ceil(totalCount / limit),
+        hasNext: page < Math.ceil(totalCount / limit),
         hasPrev: page > 1,
       },
     });
@@ -165,7 +184,7 @@ export const createBlock = async (request, reply) => {
         category,
         archiveUrl,
         definition: blockDefinition,
-        createdBy: "5d9be6fa-8b9c-4095-9568-07b2a5489b12"
+        createdBy: "67366103-2833-41a8-aea2-10d589a0705c"
       })
       .returning();
 
@@ -237,6 +256,154 @@ export const deleteBlock = async (request, reply) => {
     return reply.code(400).send({
       success: false,
       error: error.message,
+    });
+  }
+};
+
+export const updateBlock = async (request, reply) => {
+  try {
+    const { id } = request.params;
+    if (!id) {
+      return reply.code(400).send({ success: false, error: "Id is required" });
+    }
+
+    const [existing] = await db
+        .select()
+        .from(blocks)
+        .where(eq(blocks.id, Number(id)));
+
+    if (!existing) {
+      return reply.code(404).send({ success: false, error: "Block not found" });
+    }
+
+    const fileData = request.body.file;
+    const incomingName = request.body.name?.value;
+    const incomingCategory = request.body.category?.value;
+    const incomingIsActiveRaw = request.body.isActive?.value;
+    const incomingIsActive =
+        incomingIsActiveRaw === undefined
+            ? existing.isActive
+            : incomingIsActiveRaw === "true";
+
+    const userId = "67366103-2833-41a8-aea2-10d589a0705c";
+
+    const updatePayload = {
+      name: incomingName ?? existing.name,
+      category: incomingCategory ?? existing.category,
+      isActive: incomingIsActive,
+      updatedBy: userId,
+      updatedAt: new Date(),
+    };
+
+    // If no new file — simple update
+    if (!fileData) {
+      const [updatedBlock] = await db
+          .update(blocks)
+          .set(updatePayload)
+          .where(eq(blocks.id, Number(id)))
+          .returning();
+      return reply.code(200).send({ success: true, data: updatedBlock });
+    }
+
+    const archiveBuffer = fileData._buf || (await fileData.toBuffer());
+
+    archiveProcessor.validateArchive(archiveBuffer, fileData.mimetype, fileData.filename);
+
+    const archiveResult = await archiveProcessor.extractAndValidate(archiveBuffer);
+
+    const definitionContent = archiveResult.files["definition.json"].content;
+    const templateDefinition = JSON.parse(definitionContent || "{}");
+
+    const newDefinition = {
+      originalArchive: fileData.filename,
+      mimeType: fileData.mimetype,
+      archiveSize: archiveBuffer.length,
+      template: {
+        name: updatePayload.name,
+        description: templateDefinition.description || "",
+      },
+      files: {
+        template: {
+          size: archiveResult.files["template.html"].size,
+          lines: archiveResult.files["template.html"].content.split("\n").length,
+        },
+        styles: {
+          size: archiveResult.files["styles.css"].size,
+          lines: archiveResult.files["styles.css"].content.split("\n").length,
+        },
+        script: {
+          size: archiveResult.files["main.js"].size,
+          lines: archiveResult.files["main.js"].content.split("\n").length,
+        },
+      },
+      validation: {
+        isValid: archiveResult.isValid,
+        requiredFiles: archiveProcessor.requiredFiles,
+        totalFiles: archiveResult.fileCount,
+        validatedAt: new Date().toISOString(),
+      },
+    };
+
+    const timestamp = Date.now();
+    const safeArchiveFilename = `block_${id}_${timestamp}.zip`;
+
+    const { error: uploadError } = await supabase.storage
+        .from("uploads")
+        .upload(safeArchiveFilename, archiveBuffer, {
+          contentType: "application/zip",
+          upsert: false, // false is OK because filename contains timestamp -> unique
+        });
+
+    if (uploadError) {
+      throw new Error(`Failed to upload new archive: ${uploadError.message}`);
+    }
+
+    const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(safeArchiveFilename);
+    const newArchiveUrl = urlData.publicUrl;
+
+    updatePayload.archiveUrl = newArchiveUrl;
+    updatePayload.definition = newDefinition;
+
+    let updatedBlock;
+    try {
+      const [res] = await db
+          .update(blocks)
+          .set(updatePayload)
+          .where(eq(blocks.id, Number(id)))
+          .returning();
+
+      updatedBlock = res;
+    } catch (dbError) {
+      try {
+        const { error: cleanupError } = await supabase.storage.from("uploads").remove([safeArchiveFilename]);
+        if (cleanupError) {
+          console.warn("Failed to remove newly uploaded file after DB error:", cleanupError.message);
+        }
+      } catch (cleanupErr) {
+        console.warn("Cleanup attempt error:", cleanupErr);
+      }
+      throw new Error(`DB update failed: ${dbError.message}`);
+    }
+
+    try {
+      if (existing.archiveUrl) {
+        const oldFilename = existing.archiveUrl.split("/").pop();
+        if (oldFilename && oldFilename !== safeArchiveFilename) {
+          const { error: removeErr } = await supabase.storage.from("uploads").remove([oldFilename]);
+          if (removeErr) {
+            console.warn("Failed to delete old archive from storage:", removeErr.message);
+          }
+        }
+      }
+    } catch (remErr) {
+      console.warn("Error while deleting old archive:", remErr);
+    }
+
+    return reply.code(200).send({ success: true, data: updatedBlock });
+  } catch (error) {
+    return reply.code(400).send({
+      success: false,
+      error: error.message || String(error),
     });
   }
 };
