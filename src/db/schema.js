@@ -30,6 +30,7 @@ export const blocks = pgTable("blocks", {
   isActive: boolean("is_active").default(true).notNull(),
   archiveUrl: varchar("archive_url", { length: 1024 }).notNull(),
   definition: jsonb("definition").notNull(),
+  description: varchar("description"),
   createdBy: uuid("created_by")
       .notNull()
       .references(() => profiles.userId),

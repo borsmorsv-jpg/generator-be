@@ -58,6 +58,7 @@ export const getAllBlocks = async (request, reply) => {
           definition: blocks.definition,
           createdAt: blocks.createdAt,
           updatedAt: blocks.updatedAt,
+          description: blocks.description,
           createdByEmail: createdByProfile.email,
           createdByUsername: createdByProfile.username,
           updatedByEmail: updatedByProfile.email,
@@ -104,6 +105,7 @@ export const createBlock = async (request, reply) => {
     const isActive = request.body.isActive?.value === "true";
     const name = request.body.name?.value;
     const category = request.body.category?.value;
+    const description = request.body.description?.value;
 
     if (!fileData || !name) {
       return reply.code(400).send({
@@ -187,6 +189,7 @@ export const createBlock = async (request, reply) => {
         isActive,
         category,
         archiveUrl,
+        description,
         definition: blockDefinition,
         createdBy: "67366103-2833-41a8-aea2-10d589a0705c"
       })
@@ -282,6 +285,7 @@ export const updateBlock = async (request, reply) => {
 
     const fileData = request.body.file;
     const incomingName = request.body.name?.value;
+    const description = request.body.description?.value;
     const incomingCategory = request.body.category?.value;
     const incomingIsActiveRaw = request.body.isActive?.value;
     const incomingIsActive =
@@ -295,6 +299,7 @@ export const updateBlock = async (request, reply) => {
       name: incomingName ?? existing.name,
       category: incomingCategory ?? existing.category,
       isActive: incomingIsActive,
+      description,
       updatedBy: userId,
       updatedAt: new Date(),
     };

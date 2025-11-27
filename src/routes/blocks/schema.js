@@ -27,6 +27,12 @@ export const createBlockSchema = {
           value: { type: "string", minLength: 1 },
         },
       },
+      description: {
+        type: "object",
+        properties: {
+          value: { type: "string" },
+        },
+      },
       isActive: {
         type: "object",
         properties: {
@@ -44,7 +50,7 @@ export const getAllBlocksSchema = {
     type: "object",
     properties: {
       page: { type: "integer", minimum: 1, default: 1 },
-      limit: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+      limit: { type: "integer", minimum: 1, maximum: 250, default: 20 },
       search: { type: "string" },
       sortBy: {
         type: "string",
@@ -124,6 +130,12 @@ export const updateBlockSchema = {
       category: {
         type: "object",
         properties: { value: { type: "string" } },
+      },
+      description: {
+        type: "object",
+        properties: {
+          value: { type: "string" },
+        },
       },
       name: {
         type: "object",
