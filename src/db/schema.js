@@ -6,6 +6,7 @@ import {
   timestamp,
   boolean,
   pgEnum,
+  text,
   jsonb,
 } from "drizzle-orm/pg-core";
 
@@ -30,7 +31,7 @@ export const blocks = pgTable("blocks", {
   isActive: boolean("is_active").default(true).notNull(),
   archiveUrl: varchar("archive_url", { length: 1024 }).notNull(),
   definition: jsonb("definition").notNull(),
-  description: varchar("description"),
+  description: text("description"),
   createdBy: uuid("created_by")
       .notNull()
       .references(() => profiles.userId),
