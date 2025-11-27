@@ -1,9 +1,8 @@
 import {blocks, profiles} from "../../db/schema.js";
 import { db, supabase } from "../../db/connection.js";
 import archiveProcessor from "../../utils/archiveProcessor.js";
-import {asc, desc, eq, ilike, count, and} from "drizzle-orm";
+import {asc, gte, lte, desc, eq, ilike, count, and} from "drizzle-orm";
 import {alias} from "drizzle-orm/pg-core";
-import {gte, lte} from "zod";
 
 export const getAllBlocks = async (request, reply) => {
   try {
@@ -11,9 +10,10 @@ export const getAllBlocks = async (request, reply) => {
       page = 1,
       limit = 20,
       search = "",
-      sortBy = "name",
-      sortOrder = "asc",
+      sortBy = "createdAt",
+      sortOrder = "desc",
       category,
+      isActive,
       createdBy,
       updatedBy,
       createdAtFrom,
@@ -40,6 +40,14 @@ export const getAllBlocks = async (request, reply) => {
     if (updatedAtFrom) filters.push(gte(blocks.updatedAt, updatedAtFrom));
     if (updatedAtTo) filters.push(lte(blocks.updatedAt, updatedAtTo));
 
+    if (isActive === "true") {
+      filters.push(eq(blocks.isActive, true));
+    } else if (isActive === "false") {
+      filters.push(eq(blocks.isActive, false));
+    }
+
+    const order = (column) => sortOrder === "asc" ? asc(column) : desc(column);
+
     const query = db
         .select({
           id: blocks.id,
@@ -59,11 +67,7 @@ export const getAllBlocks = async (request, reply) => {
         .leftJoin(createdByProfile, eq(blocks.createdBy, createdByProfile.userId))
         .leftJoin(updatedByProfile, eq(blocks.updatedBy, updatedByProfile.userId))
         .where(filters.length ? and(...filters) : undefined)
-        .orderBy(
-            sortOrder === "desc"
-                ? desc(sortBy === "createdAt" ? blocks.createdAt : blocks.name)
-                : asc(sortBy === "createdAt" ? blocks.createdAt : blocks.name)
-        )
+        .orderBy(order(blocks[sortBy]))
         .limit(limit)
         .offset(offset);
 

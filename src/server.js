@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import blocksRoutes from "./routes/blocks/index.js";
 import authRoutes from "./routes/auth/index.js";
+import usersRoutes from "./routes/users/index.js";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { config } from "./config/index.js";
@@ -21,6 +22,7 @@ await fastify.register(swagger, {
 await fastify.register(swaggerUi, { routePrefix: "/docs" });
 
 fastify.register(blocksRoutes, { prefix: "api/v1/blocks" });
+fastify.register(usersRoutes, { prefix: "api/v1/users" });
 fastify.register(authRoutes, { prefix: "api/v1/auth" });
 
 try {

@@ -39,30 +39,48 @@ export const createBlockSchema = {
 
 export const getAllBlocksSchema = {
   tags: ["Blocks"],
-  summary: "Get all blocks",
+  summary: "Get all blocks with pagination, filtering, search and sorting",
   querystring: {
     type: "object",
     properties: {
       page: { type: "integer", minimum: 1, default: 1 },
-      limit: { type: "integer", minimum: 1, maximum: 1000, default: 20 },
-      search: { type: "string", default: "" },
+      limit: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+      search: { type: "string" },
       sortBy: {
         type: "string",
-        enum: ["name", "createdAt", "updatedAt"],
-        default: "name",
+        enum: [
+          "id",
+          "name",
+          "category",
+          "isActive",
+          "archiveUrl",
+          "createdAt",
+          "updatedAt",
+          "createdByEmail",
+          "createdByUsername",
+          "updatedByEmail",
+          "updatedByUsername",
+        ],
+        default: "createdAt",
       },
+
       sortOrder: {
         type: "string",
         enum: ["asc", "desc"],
-        default: "asc",
+        default: "desc",
       },
+
       category: { type: "string" },
+      isActive: {
+        type: "string",
+        enum: ["true", "false"],
+      },
       createdBy: { type: "string", format: "uuid" },
       updatedBy: { type: "string", format: "uuid" },
       createdAtFrom: { type: "string", format: "date-time" },
-      createdAtTo:   { type: "string", format: "date-time" },
+      createdAtTo: { type: "string", format: "date-time" },
       updatedAtFrom: { type: "string", format: "date-time" },
-      updatedAtTo:   { type: "string", format: "date-time" },
+      updatedAtTo: { type: "string", format: "date-time" },
     },
   },
 };
