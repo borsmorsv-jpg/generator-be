@@ -1,7 +1,7 @@
 import {blocks, profiles} from "../../db/schema.js";
 import { db, supabase } from "../../db/connection.js";
 import archiveProcessor from "../../utils/archiveProcessor.js";
-import {asc, gte, lte, desc, eq, ilike, count, and} from "drizzle-orm";
+import {asc, gte, lte, desc, eq, ilike, count, and, sql} from "drizzle-orm";
 import {alias} from "drizzle-orm/pg-core";
 
 export const getAllBlocks = async (request, reply) => {
@@ -9,7 +9,8 @@ export const getAllBlocks = async (request, reply) => {
     const {
       page = 1,
       limit = 20,
-      search = "",
+      searchByName = "",
+      searchById = "",
       sortBy = "createdAt",
       sortOrder = "desc",
       category,
@@ -22,6 +23,17 @@ export const getAllBlocks = async (request, reply) => {
       updatedAtTo,
     } = request.query;
 
+    const parseDateFilter = (dateString) => {
+      if (!dateString) return null;
+      const date = new Date(dateString);
+      return isNaN(date.getTime()) ? null : date;
+    };
+
+    const createdAtFromDate = parseDateFilter(createdAtFrom);
+    const createdAtToDate = parseDateFilter(createdAtTo);
+    const updatedAtFromDate = parseDateFilter(updatedAtFrom);
+    const updatedAtToDate = parseDateFilter(updatedAtTo);
+
     const offset = (page - 1) * limit;
 
     const createdByProfile = alias(profiles, "created_by_profile");
@@ -29,16 +41,20 @@ export const getAllBlocks = async (request, reply) => {
 
     const filters = [];
 
-    if (search) filters.push(ilike(blocks.name, `%${search}%`));
+    if (searchByName) filters.push(ilike(blocks.name, `%${searchByName}%`));
+    if (searchById) {
+      filters.push(
+          sql`CAST(${blocks.id} AS TEXT) ILIKE ${'%' + searchById + '%'}`
+      );
+    };
     if (category) filters.push(eq(blocks.category, category));
     if (createdBy) filters.push(eq(blocks.createdBy, createdBy));
     if (updatedBy) filters.push(eq(blocks.updatedBy, updatedBy));
 
-    if (createdAtFrom) filters.push(gte(blocks.createdAt, createdAtFrom));
-    if (createdAtTo) filters.push(lte(blocks.createdAt, createdAtTo));
-
-    if (updatedAtFrom) filters.push(gte(blocks.updatedAt, updatedAtFrom));
-    if (updatedAtTo) filters.push(lte(blocks.updatedAt, updatedAtTo));
+    if (createdAtFromDate) filters.push(gte(blocks.createdAt, createdAtFromDate));
+    if (createdAtToDate) filters.push(lte(blocks.createdAt, createdAtToDate));
+    if (updatedAtFromDate) filters.push(gte(blocks.updatedAt, updatedAtFromDate));
+    if (updatedAtToDate) filters.push(lte(blocks.updatedAt, updatedAtToDate));
 
     if (isActive === "true") {
       filters.push(eq(blocks.isActive, true));

@@ -51,7 +51,8 @@ export const getAllBlocksSchema = {
     properties: {
       page: { type: "integer", minimum: 1, default: 1 },
       limit: { type: "integer", minimum: 1, maximum: 250, default: 20 },
-      search: { type: "string" },
+      searchByName: { type: "string" },
+      searchById: { type: "string" },
       sortBy: {
         type: "string",
         enum: [
