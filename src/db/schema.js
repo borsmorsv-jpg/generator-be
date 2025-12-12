@@ -40,3 +40,18 @@ export const blocks = pgTable("blocks", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const templates = pgTable("templates", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  archiveUrl: varchar("archive_url", { length: 1024 }).notNull(),
+  definition: jsonb("definition").notNull(),
+  createdBy: uuid("created_by")
+      .notNull()
+      .references(() => profiles.userId),
+  updatedBy: uuid("updated_by")
+      .references(() => profiles.userId, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

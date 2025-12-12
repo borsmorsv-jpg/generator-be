@@ -1,10 +1,10 @@
-import {blocks, profiles} from "../../db/schema.js";
+import { profiles, templates } from "../../db/schema.js";
 import { db, supabase } from "../../db/connection.js";
 import archiveProcessor from "../../utils/archiveProcessor.js";
-import {asc, gte, lte, desc, eq, ilike, count, and, sql} from "drizzle-orm";
-import {alias} from "drizzle-orm/pg-core";
+import { asc, gte, lte, desc, eq, ilike, count, and, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
-export const getAllBlocks = async (request, reply) => {
+export const getAllTemplates = async (request, reply) => {
   try {
     const {
       page = 1,
@@ -13,7 +13,6 @@ export const getAllBlocks = async (request, reply) => {
       searchById = "",
       sortBy = "createdAt",
       sortOrder = "desc",
-      category,
       isActive,
       createdBy,
       updatedBy,
@@ -41,50 +40,47 @@ export const getAllBlocks = async (request, reply) => {
 
     const filters = [];
 
-    if (searchByName) filters.push(ilike(blocks.name, `%${searchByName}%`));
+    if (searchByName) filters.push(ilike(templates.name, `%${searchByName}%`));
     if (searchById) {
       filters.push(
-          sql`CAST(${blocks.id} AS TEXT) ILIKE ${'%' + searchById + '%'}`
+          sql`CAST(${templates.id} AS TEXT) ILIKE ${'%' + searchById + '%'}`
       );
     };
-    if (category) filters.push(eq(blocks.category, category));
-    if (createdBy) filters.push(eq(blocks.createdBy, createdBy));
-    if (updatedBy) filters.push(eq(blocks.updatedBy, updatedBy));
+    if (createdBy) filters.push(eq(templates.createdBy, createdBy));
+    if (updatedBy) filters.push(eq(templates.updatedBy, updatedBy));
 
-    if (createdAtFromDate) filters.push(gte(blocks.createdAt, createdAtFromDate));
-    if (createdAtToDate) filters.push(lte(blocks.createdAt, createdAtToDate));
-    if (updatedAtFromDate) filters.push(gte(blocks.updatedAt, updatedAtFromDate));
-    if (updatedAtToDate) filters.push(lte(blocks.updatedAt, updatedAtToDate));
+    if (createdAtFromDate) filters.push(gte(templates.createdAt, createdAtFromDate));
+    if (createdAtToDate) filters.push(lte(templates.createdAt, createdAtToDate));
+    if (updatedAtFromDate) filters.push(gte(templates.updatedAt, updatedAtFromDate));
+    if (updatedAtToDate) filters.push(lte(templates.updatedAt, updatedAtToDate));
 
     if (isActive === "true") {
-      filters.push(eq(blocks.isActive, true));
+      filters.push(eq(templates.isActive, true));
     } else if (isActive === "false") {
-      filters.push(eq(blocks.isActive, false));
+      filters.push(eq(templates.isActive, false));
     }
 
     const order = (column) => sortOrder === "asc" ? asc(column) : desc(column);
 
     const query = db
         .select({
-          id: blocks.id,
-          name: blocks.name,
-          category: blocks.category,
-          isActive: blocks.isActive,
-          archiveUrl: blocks.archiveUrl,
-          definition: blocks.definition,
-          createdAt: blocks.createdAt,
-          updatedAt: blocks.updatedAt,
-          description: blocks.description,
+          id: templates.id,
+          name: templates.name,
+          isActive: templates.isActive,
+          archiveUrl: templates.archiveUrl,
+          definition: templates.definition,
+          createdAt: templates.createdAt,
+          updatedAt: templates.updatedAt,
           createdByEmail: createdByProfile.email,
           createdByUsername: createdByProfile.username,
           updatedByEmail: updatedByProfile.email,
           updatedByUsername: updatedByProfile.username,
         })
-        .from(blocks)
-        .leftJoin(createdByProfile, eq(blocks.createdBy, createdByProfile.userId))
-        .leftJoin(updatedByProfile, eq(blocks.updatedBy, updatedByProfile.userId))
+        .from(templates)
+        .leftJoin(createdByProfile, eq(templates.createdBy, createdByProfile.userId))
+        .leftJoin(updatedByProfile, eq(templates.updatedBy, updatedByProfile.userId))
         .where(filters.length ? and(...filters) : undefined)
-        .orderBy(order(blocks[sortBy]))
+        .orderBy(order(templates[sortBy]))
         .limit(limit)
         .offset(offset);
 
@@ -92,7 +88,7 @@ export const getAllBlocks = async (request, reply) => {
 
     const [{ count: totalCount }] = await db
         .select({ count: count() })
-        .from(blocks)
+        .from(templates)
         .where(filters.length ? and(...filters) : undefined);
 
     return reply.code(200).send({
@@ -115,13 +111,11 @@ export const getAllBlocks = async (request, reply) => {
   }
 };
 
-export const createBlock = async (request, reply) => {
+export const createTemplate = async (request, reply) => {
   try {
     const fileData = request.body.file;
     const isActive = request.body.isActive?.value === "true";
     const name = request.body.name?.value;
-    const category = request.body.category?.value;
-    const description = request.body.description?.value;
 
     if (!fileData || !name) {
       return reply.code(400).send({
@@ -145,8 +139,8 @@ export const createBlock = async (request, reply) => {
       fileData.filename
     );
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("blocks")
+    const { error: uploadError } = await supabase.storage
+      .from("templates")
       .upload(archiveFilename, archiveBuffer, {
         contentType: "application/zip",
         upsert: false,
@@ -154,26 +148,22 @@ export const createBlock = async (request, reply) => {
 
     if (uploadError) {
       throw new Error(
-        `Failed to upload block to file storage: ${uploadError.message}`
+        `Failed to upload template to file storage: ${uploadError.message}`
       );
     }
 
     const { data: urlData } = supabase.storage
-      .from("blocks")
+      .from("templates")
       .getPublicUrl(archiveFilename);
 
     const archiveUrl = urlData.publicUrl;
 
-    const definitionContent = archiveResult.files["definition.json"].content;
-    const templateDefinition = JSON.parse(definitionContent);
-
-    const blockDefinition = {
+    const templateDefinition = {
       originalArchive: fileData.filename,
       mimeType: fileData.mimetype,
       archiveSize: archiveBuffer.length,
       template: {
         name: name,
-        description: templateDefinition.description || "",
       },
       files: {
         template: {
@@ -198,22 +188,20 @@ export const createBlock = async (request, reply) => {
       },
     };
 
-    const [newBlock] = await db
-      .insert(blocks)
+    const [newTemplate] = await db
+      .insert(templates)
       .values({
         name,
         isActive,
-        category,
         archiveUrl,
-        description,
-        definition: blockDefinition,
+        definition: templateDefinition,
         createdBy: "67366103-2833-41a8-aea2-10d589a0705c"
       })
       .returning();
 
     reply.send({
       success: true,
-      data: newBlock,
+      data: newTemplate,
     });
   } catch (error) {
     reply.code(400).send({
@@ -223,42 +211,42 @@ export const createBlock = async (request, reply) => {
   }
 };
 
-export const deleteBlock = async (request, reply) => {
+export const deleteTemplate = async (request, reply) => {
   try {
     const { id } = request.params;
 
     if (!id) {
       return reply.code(400).send({
         success: false,
-        error: "Block ID is required",
+        error: "Template ID is required",
       });
     }
 
-    const [block] = await db
+    const [template] = await db
         .select()
-        .from(blocks)
-        .where(eq(blocks.id, parseInt(id)));
+        .from(templates)
+        .where(eq(templates.id, parseInt(id)));
 
-    if (!block) {
+    if (!template) {
       return reply.code(404).send({
         success: false,
-        error: "Block not found",
+        error: "Template not found",
       });
     }
 
-    const [deletedBlock] = await db
-        .delete(blocks)
-        .where(eq(blocks.id, parseInt(id)))
+    const [deletedTemplate] = await db
+        .delete(templates)
+        .where(eq(templates.id, parseInt(id)))
         .returning();
 
     try {
-      if (block.archiveUrl) {
-        const urlParts = block.archiveUrl.split('/');
+      if (template.archiveUrl) {
+        const urlParts = template.archiveUrl.split('/');
         const filename = urlParts[urlParts.length - 1];
 
         if (filename) {
           const { error: storageError } = await supabase.storage
-              .from("blocks")
+              .from("templates")
               .remove([filename]);
 
           if (storageError) {
@@ -272,8 +260,8 @@ export const deleteBlock = async (request, reply) => {
 
     return reply.code(200).send({
       success: true,
-      data: deletedBlock,
-      message: "Block deleted successfully",
+      data: deletedTemplate,
+      message: "Template deleted successfully",
     });
   } catch (error) {
     return reply.code(400).send({
@@ -283,7 +271,7 @@ export const deleteBlock = async (request, reply) => {
   }
 };
 
-export const updateBlock = async (request, reply) => {
+export const updateTemplate = async (request, reply) => {
   try {
     const { id } = request.params;
     if (!id) {
@@ -292,11 +280,11 @@ export const updateBlock = async (request, reply) => {
 
     const [existing] = await db
         .select()
-        .from(blocks)
-        .where(eq(blocks.id, Number(id)));
+        .from(templates)
+        .where(eq(templates.id, Number(id)));
 
     if (!existing) {
-      return reply.code(404).send({ success: false, error: "Block not found" });
+      return reply.code(404).send({ success: false, error: "Template not found" });
     }
 
     const fileData = request.body.file;
@@ -322,12 +310,12 @@ export const updateBlock = async (request, reply) => {
 
     // If no new file — simple update
     if (!fileData) {
-      const [updatedBlock] = await db
-          .update(blocks)
+      const [updatedTemplate] = await db
+          .update(templates)
           .set(updatePayload)
-          .where(eq(blocks.id, Number(id)))
+          .where(eq(templates.id, Number(id)))
           .returning();
-      return reply.code(200).send({ success: true, data: updatedBlock });
+      return reply.code(200).send({ success: true, data: updatedTemplate });
     }
 
     const archiveBuffer = fileData._buf || (await fileData.toBuffer());
@@ -370,10 +358,10 @@ export const updateBlock = async (request, reply) => {
     };
 
     const timestamp = Date.now();
-    const safeArchiveFilename = `block_${id}_${timestamp}.zip`;
+    const safeArchiveFilename = `template_${id}_${timestamp}.zip`;
 
     const { error: uploadError } = await supabase.storage
-        .from("blocks")
+        .from("templates")
         .upload(safeArchiveFilename, archiveBuffer, {
           contentType: "application/zip",
           upsert: false, // false is OK because filename contains timestamp -> unique
@@ -383,24 +371,24 @@ export const updateBlock = async (request, reply) => {
       throw new Error(`Failed to upload new archive: ${uploadError.message}`);
     }
 
-    const { data: urlData } = supabase.storage.from("blocks").getPublicUrl(safeArchiveFilename);
+    const { data: urlData } = supabase.storage.from("templates").getPublicUrl(safeArchiveFilename);
     const newArchiveUrl = urlData.publicUrl;
 
     updatePayload.archiveUrl = newArchiveUrl;
     updatePayload.definition = newDefinition;
 
-    let updatedBlock;
+    let updatedTemplate;
     try {
       const [res] = await db
-          .update(blocks)
+          .update(templates)
           .set(updatePayload)
-          .where(eq(blocks.id, Number(id)))
+          .where(eq(templates.id, Number(id)))
           .returning();
 
-      updatedBlock = res;
+      updatedTemplate = res;
     } catch (dbError) {
       try {
-        const { error: cleanupError } = await supabase.storage.from("blocks").remove([safeArchiveFilename]);
+        const { error: cleanupError } = await supabase.storage.from("templates").remove([safeArchiveFilename]);
         if (cleanupError) {
           console.warn("Failed to remove newly uploaded file after DB error:", cleanupError.message);
         }
@@ -414,7 +402,7 @@ export const updateBlock = async (request, reply) => {
       if (existing.archiveUrl) {
         const oldFilename = existing.archiveUrl.split("/").pop();
         if (oldFilename && oldFilename !== safeArchiveFilename) {
-          const { error: removeErr } = await supabase.storage.from("blocks").remove([oldFilename]);
+          const { error: removeErr } = await supabase.storage.from("templates").remove([oldFilename]);
           if (removeErr) {
             console.warn("Failed to delete old archive from storage:", removeErr.message);
           }
@@ -424,7 +412,7 @@ export const updateBlock = async (request, reply) => {
       console.warn("Error while deleting old archive:", remErr);
     }
 
-    return reply.code(200).send({ success: true, data: updatedBlock });
+    return reply.code(200).send({ success: true, data: updatedTemplate });
   } catch (error) {
     return reply.code(400).send({
       success: false,
