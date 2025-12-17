@@ -151,3 +151,9 @@ export const updateBlockSchema = {
     },
   },
 };
+
+export const getBlockSchema = {
+  tags: ["Blocks"],
+  summary: "Get block details",
+  description: "Get block details",
+};
