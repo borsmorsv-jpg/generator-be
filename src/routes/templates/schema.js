@@ -47,7 +47,6 @@ export const getAllTemplatesSchema = {
           "id",
           "name",
           "isActive",
-          "archiveUrl",
           "createdAt",
           "updatedAt",
           "createdByEmail",

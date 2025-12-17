@@ -1,8 +1,7 @@
-import { profiles, templates } from "../../db/schema.js";
-import { db, supabase } from "../../db/connection.js";
-import archiveProcessor from "../../utils/archiveProcessor.js";
-import { asc, gte, lte, desc, eq, ilike, count, and, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import {profiles, templates} from "../../db/schema.js";
+import {db, supabase} from "../../db/connection.js";
+import {and, asc, count, desc, eq, gte, ilike, lte, sql} from "drizzle-orm";
+import {alias} from "drizzle-orm/pg-core";
 
 export const getAllTemplates = async (request, reply) => {
   try {
@@ -67,7 +66,6 @@ export const getAllTemplates = async (request, reply) => {
           id: templates.id,
           name: templates.name,
           isActive: templates.isActive,
-          archiveUrl: templates.archiveUrl,
           definition: templates.definition,
           createdAt: templates.createdAt,
           updatedAt: templates.updatedAt,
@@ -125,76 +123,14 @@ export const createTemplate = async (request, reply) => {
     }
 
     const archiveBuffer = fileData._buf || (await fileData.toBuffer());
-
-    archiveProcessor.validateArchive(
-      archiveBuffer,
-      fileData.mimetype,
-      fileData.filename
-    );
-    const archiveResult = await archiveProcessor.extractAndValidate(
-      archiveBuffer
-    );
-
-    const archiveFilename = archiveProcessor.generateArchiveName(
-      fileData.filename
-    );
-
-    const { error: uploadError } = await supabase.storage
-      .from("templates")
-      .upload(archiveFilename, archiveBuffer, {
-        contentType: "application/zip",
-        upsert: false,
-      });
-
-    if (uploadError) {
-      throw new Error(
-        `Failed to upload template to file storage: ${uploadError.message}`
-      );
-    }
-
-    const { data: urlData } = supabase.storage
-      .from("templates")
-      .getPublicUrl(archiveFilename);
-
-    const archiveUrl = urlData.publicUrl;
-
-    const templateDefinition = {
-      originalArchive: fileData.filename,
-      mimeType: fileData.mimetype,
-      archiveSize: archiveBuffer.length,
-      template: {
-        name: name,
-      },
-      files: {
-        template: {
-          size: archiveResult.files["template.html"].size,
-          lines:
-            archiveResult.files["template.html"].content.split("\n").length,
-        },
-        styles: {
-          size: archiveResult.files["styles.css"].size,
-          lines: archiveResult.files["styles.css"].content.split("\n").length,
-        },
-        script: {
-          size: archiveResult.files["main.js"].size,
-          lines: archiveResult.files["main.js"].content.split("\n").length,
-        },
-      },
-      validation: {
-        isValid: archiveResult.isValid,
-        requiredFiles: archiveProcessor.requiredFiles,
-        totalFiles: archiveResult.fileCount,
-        validatedAt: new Date().toISOString(),
-      },
-    };
+    const jsonString = archiveBuffer.toString("utf-8");
 
     const [newTemplate] = await db
       .insert(templates)
       .values({
         name,
         isActive,
-        archiveUrl,
-        definition: templateDefinition,
+        definition: jsonString,
         createdBy: "67366103-2833-41a8-aea2-10d589a0705c"
       })
       .returning();
@@ -319,63 +255,7 @@ export const updateTemplate = async (request, reply) => {
     }
 
     const archiveBuffer = fileData._buf || (await fileData.toBuffer());
-
-    archiveProcessor.validateArchive(archiveBuffer, fileData.mimetype, fileData.filename);
-
-    const archiveResult = await archiveProcessor.extractAndValidate(archiveBuffer);
-
-    const definitionContent = archiveResult.files["definition.json"].content;
-    const templateDefinition = JSON.parse(definitionContent || "{}");
-
-    const newDefinition = {
-      originalArchive: fileData.filename,
-      mimeType: fileData.mimetype,
-      archiveSize: archiveBuffer.length,
-      template: {
-        name: updatePayload.name,
-        description: templateDefinition.description || "",
-      },
-      files: {
-        template: {
-          size: archiveResult.files["template.html"].size,
-          lines: archiveResult.files["template.html"].content.split("\n").length,
-        },
-        styles: {
-          size: archiveResult.files["styles.css"].size,
-          lines: archiveResult.files["styles.css"].content.split("\n").length,
-        },
-        script: {
-          size: archiveResult.files["main.js"].size,
-          lines: archiveResult.files["main.js"].content.split("\n").length,
-        },
-      },
-      validation: {
-        isValid: archiveResult.isValid,
-        requiredFiles: archiveProcessor.requiredFiles,
-        totalFiles: archiveResult.fileCount,
-        validatedAt: new Date().toISOString(),
-      },
-    };
-
-    const timestamp = Date.now();
-    const safeArchiveFilename = `template_${id}_${timestamp}.zip`;
-
-    const { error: uploadError } = await supabase.storage
-        .from("templates")
-        .upload(safeArchiveFilename, archiveBuffer, {
-          contentType: "application/zip",
-          upsert: false, // false is OK because filename contains timestamp -> unique
-        });
-
-    if (uploadError) {
-      throw new Error(`Failed to upload new archive: ${uploadError.message}`);
-    }
-
-    const { data: urlData } = supabase.storage.from("templates").getPublicUrl(safeArchiveFilename);
-    const newArchiveUrl = urlData.publicUrl;
-
-    updatePayload.archiveUrl = newArchiveUrl;
-    updatePayload.definition = newDefinition;
+    updatePayload.definition = archiveBuffer.toString("utf-8");
 
     let updatedTemplate;
     try {
@@ -387,29 +267,7 @@ export const updateTemplate = async (request, reply) => {
 
       updatedTemplate = res;
     } catch (dbError) {
-      try {
-        const { error: cleanupError } = await supabase.storage.from("templates").remove([safeArchiveFilename]);
-        if (cleanupError) {
-          console.warn("Failed to remove newly uploaded file after DB error:", cleanupError.message);
-        }
-      } catch (cleanupErr) {
-        console.warn("Cleanup attempt error:", cleanupErr);
-      }
       throw new Error(`DB update failed: ${dbError.message}`);
-    }
-
-    try {
-      if (existing.archiveUrl) {
-        const oldFilename = existing.archiveUrl.split("/").pop();
-        if (oldFilename && oldFilename !== safeArchiveFilename) {
-          const { error: removeErr } = await supabase.storage.from("templates").remove([oldFilename]);
-          if (removeErr) {
-            console.warn("Failed to delete old archive from storage:", removeErr.message);
-          }
-        }
-      }
-    } catch (remErr) {
-      console.warn("Error while deleting old archive:", remErr);
     }
 
     return reply.code(200).send({ success: true, data: updatedTemplate });
