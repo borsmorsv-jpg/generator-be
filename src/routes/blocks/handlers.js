@@ -3,6 +3,7 @@ import { db, supabase } from "../../db/connection.js";
 import archiveProcessor from "../../utils/archiveProcessor.js";
 import {asc, gte, lte, desc, eq, ilike, count, and, sql} from "drizzle-orm";
 import {alias} from "drizzle-orm/pg-core";
+import JSZip from "jszip";
 
 export const getAllBlocks = async (request, reply) => {
   try {
@@ -429,6 +430,52 @@ export const updateBlock = async (request, reply) => {
     return reply.code(400).send({
       success: false,
       error: error.message || String(error),
+    });
+  }
+};
+
+export const getOneBlock = async (request, reply) => {
+  try {
+    const { blockId } = request.params;
+    console.log("blockId", blockId);
+
+    const [block] = await db
+        .select()
+        .from(blocks)
+        .where(eq(blocks.id, parseInt(blockId)));
+
+    const response = await fetch(block.archiveUrl);
+
+    if (!response.ok) {
+      throw new Error(`Failed to download archive: ${response.status}`);
+    }
+
+    const zipBuffer = Buffer.from(await response.arrayBuffer());
+
+    const zip = await JSZip.loadAsync(zipBuffer);
+
+    const jsonEntry = Object.values(zip.files).find(
+        (file) => !file.dir && file.name.endsWith(".json")
+    );
+
+    if (!jsonEntry) {
+      return reply.code(400).send({
+        error: "No JSON file found inside archive",
+      });
+    }
+
+    const jsonString = await jsonEntry.async("string");
+    const definition = JSON.parse(jsonString);
+
+    reply.send({
+      success: true,
+      ...block,
+      definition,
+    });
+  } catch (error) {
+    reply.code(500).send({
+      success: false,
+      error: error.message,
     });
   }
 };
