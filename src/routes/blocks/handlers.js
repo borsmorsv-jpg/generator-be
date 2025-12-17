@@ -470,6 +470,7 @@ export const getOneBlock = async (request, reply) => {
     reply.send({
       success: true,
       ...block,
+      originalArchive: block.definition,
       definition,
     });
   } catch (error) {
