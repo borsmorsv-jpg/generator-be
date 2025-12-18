@@ -44,6 +44,7 @@ export const blocks = pgTable("blocks", {
 export const templates = pgTable("templates", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
+  fileName: varchar("file_name", { length: 255 }).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   // archiveUrl: varchar("archive_url", { length: 1024 }).notNull(),
   definition: jsonb("definition").notNull(),

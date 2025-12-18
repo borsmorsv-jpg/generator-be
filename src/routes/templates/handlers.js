@@ -65,6 +65,7 @@ export const getAllTemplates = async (request, reply) => {
         .select({
           id: templates.id,
           name: templates.name,
+          fileName: templates.fileName,
           isActive: templates.isActive,
           definition: templates.definition,
           createdAt: templates.createdAt,
@@ -130,6 +131,7 @@ export const createTemplate = async (request, reply) => {
       .values({
         name,
         isActive,
+        fileName: fileData?.filename,
         definition: jsonString,
         createdBy: "67366103-2833-41a8-aea2-10d589a0705c"
       })
@@ -240,6 +242,7 @@ export const updateTemplate = async (request, reply) => {
       category: incomingCategory ?? existing.category,
       isActive: incomingIsActive,
       description,
+      fileName: fileData?.filename,
       updatedBy: userId,
       updatedAt: new Date(),
     };
