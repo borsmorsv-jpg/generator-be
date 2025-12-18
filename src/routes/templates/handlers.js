@@ -19,6 +19,8 @@ export const getAllTemplates = async (request, reply) => {
       createdAtTo,
       updatedAtFrom,
       updatedAtTo,
+      createdByUserId,
+      updatedByUserId,
     } = request.query;
 
     const parseDateFilter = (dateString) => {
@@ -52,6 +54,9 @@ export const getAllTemplates = async (request, reply) => {
     if (createdAtToDate) filters.push(lte(templates.createdAt, createdAtToDate));
     if (updatedAtFromDate) filters.push(gte(templates.updatedAt, updatedAtFromDate));
     if (updatedAtToDate) filters.push(lte(templates.updatedAt, updatedAtToDate));
+
+    if (createdByUserId) filters.push(lte(templates.createdBy, createdByUserId));
+    if (updatedByUserId) filters.push(lte(templates.updatedBy, updatedByUserId));
 
     if (isActive === "true") {
       filters.push(eq(templates.isActive, true));

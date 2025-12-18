@@ -1,4 +1,4 @@
-import {blocks, profiles} from "../../db/schema.js";
+import {blocks, profiles, templates} from "../../db/schema.js";
 import { db, supabase } from "../../db/connection.js";
 import archiveProcessor from "../../utils/archiveProcessor.js";
 import {asc, gte, lte, desc, eq, ilike, count, and, sql} from "drizzle-orm";
@@ -22,6 +22,8 @@ export const getAllBlocks = async (request, reply) => {
       createdAtTo,
       updatedAtFrom,
       updatedAtTo,
+      createdByUserId,
+      updatedByUserId,
     } = request.query;
 
     const parseDateFilter = (dateString) => {
@@ -56,6 +58,9 @@ export const getAllBlocks = async (request, reply) => {
     if (createdAtToDate) filters.push(lte(blocks.createdAt, createdAtToDate));
     if (updatedAtFromDate) filters.push(gte(blocks.updatedAt, updatedAtFromDate));
     if (updatedAtToDate) filters.push(lte(blocks.updatedAt, updatedAtToDate));
+
+    if (createdByUserId) filters.push(lte(blocks.createdBy, createdByUserId));
+    if (updatedByUserId) filters.push(lte(blocks.updatedBy, updatedByUserId));
 
     if (isActive === "true") {
       filters.push(eq(blocks.isActive, true));
