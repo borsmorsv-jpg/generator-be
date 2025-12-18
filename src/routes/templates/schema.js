@@ -41,6 +41,8 @@ export const getAllTemplatesSchema = {
       limit: { type: "integer", minimum: 1, maximum: 250, default: 20 },
       searchByName: { type: "string" },
       searchById: { type: "string" },
+      createdByUserId: { type: "string" },
+      updatedByUserId: { type: "string" },
       sortBy: {
         type: "string",
         enum: [

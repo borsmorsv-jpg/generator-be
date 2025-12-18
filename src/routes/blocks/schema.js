@@ -52,6 +52,8 @@ export const getAllBlocksSchema = {
       page: { type: "integer", minimum: 1, default: 1 },
       limit: { type: "integer", minimum: 1, maximum: 250, default: 20 },
       searchByName: { type: "string" },
+      createdByUserId: { type: "string" },
+      updatedByUserId: { type: "string" },
       searchById: { type: "string" },
       sortBy: {
         type: "string",
