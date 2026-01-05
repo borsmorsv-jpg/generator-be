@@ -9,12 +9,10 @@ const routes = async (fastify) => {
       fileSize: 100 * 1024 * 1024,
     },
   });
-
   fastify.get("/", {
     handler: getAllBlocks,
     schema: getAllBlocksSchema,
   });
-
   fastify.get("/:blockId", {
     handler: getOneBlock,
     schema: getBlockSchema,

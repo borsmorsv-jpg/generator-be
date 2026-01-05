@@ -191,10 +191,6 @@ export const createBlock = async (request, reply) => {
           size: archiveResult.files["styles.css"].size,
           lines: archiveResult.files["styles.css"].content.split("\n").length,
         },
-        script: {
-          size: archiveResult.files["main.js"].size,
-          lines: archiveResult.files["main.js"].content.split("\n").length,
-        },
       },
       validation: {
         isValid: archiveResult.isValid,
@@ -442,7 +438,6 @@ export const updateBlock = async (request, reply) => {
 export const getOneBlock = async (request, reply) => {
   try {
     const { blockId } = request.params;
-    console.log("blockId", blockId);
 
     const [block] = await db
         .select()

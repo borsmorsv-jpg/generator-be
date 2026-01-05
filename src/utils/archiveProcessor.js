@@ -7,7 +7,9 @@ import path from "path";
 const REQUIRED_FILES = [
   "template.html",
   "styles.css",
-  "main.js",
+  // "main.js",
+  "build-preview.js",
+  "preview.html",
   "definition.json",
 ];
 
@@ -66,6 +68,7 @@ async function validateFileContent(filename, buffer) {
       }
       break;
 
+
     case "template.html":
       if (content.trim().length === 0) {
         throw new Error(`File ${filename} cannot be empty`);
@@ -83,7 +86,13 @@ async function validateFileContent(filename, buffer) {
       }
       break;
 
-    case "main.js":
+    case "preview.html":
+      if (content.trim().length === 0) {
+        // Optional: can be empty
+      }
+      break;
+
+    case "build-preview.js":
       if (content.trim().length === 0) {
         // Optional: can be empty
       }
@@ -129,7 +138,7 @@ export async function extractAndValidate(buffer) {
 
         extractedFiles[requiredFile] = {
           buffer: fileBuffer,
-          size: entry.header.size,
+          size: entry?.header?.size,
           name: requiredFile,
           content: fileBuffer.toString("utf-8"),
         };
@@ -217,7 +226,7 @@ export async function createBlockDefinition(
     files: {
       template: fileStats["template.html"],
       styles: fileStats["styles.css"],
-      script: fileStats["main.js"],
+      // script: fileStats["main.js"],
       definition: fileStats["definition.json"],
     },
     validation: {
@@ -244,7 +253,9 @@ export async function quickValidate(buffer) {
       .map((entry) => entry.entryName);
 
     const missingFiles = REQUIRED_FILES.filter(
-      (file) => !fileList.includes(file)
+      (file) => {
+        return !fileList.includes(file)
+      }
     );
 
     return {
