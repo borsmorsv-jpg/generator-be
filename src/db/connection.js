@@ -1,11 +1,11 @@
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import { config } from "../config/index.js";
-import * as schema from "./schema.js";
-import {createClient} from "@supabase/supabase-js";
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import { config } from '../config/index.js';
+import * as schema from './schema.js';
+import { createClient } from '@supabase/supabase-js';
 
 if (!config.database.connectionString) {
-  throw new Error("DATABASE_URL is not set in environment variables");
+	throw new Error('DATABASE_URL is not set in environment variables');
 }
 
 const connectionString = config.database.connectionString;
