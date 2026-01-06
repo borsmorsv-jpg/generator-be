@@ -1,3 +1,5 @@
+import AdmZip from "adm-zip";
+
 export async function downloadAndUnzipBlock(archiveUrl) {
 	const response = await fetch(archiveUrl);
 	const arrayBuffer = await response.arrayBuffer();
