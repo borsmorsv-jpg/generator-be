@@ -94,4 +94,24 @@ export const getSiteSchema = {
 	tags: ['Sites'],
 	summary: 'Get site details',
 	description: 'Get site details',
+	params: {
+		type: 'object',
+		properties: {
+			siteId: { type: 'integer' },
+		},
+		required: ['siteId'],
+	},
+};
+
+export const activateSiteSchema = {
+	tags: ['Sites'],
+	summary: 'Activate generated site',
+	description: 'Activate generated site',
+	params: {
+		type: 'object',
+		properties: {
+			siteId: { type: 'integer' },
+		},
+		required: ['siteId'],
+	},
 };

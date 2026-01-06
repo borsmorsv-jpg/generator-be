@@ -109,6 +109,7 @@ ${allHtml}
 		const [siteData] = await db
 			.insert(sites)
 			.values({
+				isDraft: true,
 				name: name,
 				isActive: isActive,
 				trafficSource: trafficSource,
@@ -123,8 +124,10 @@ ${allHtml}
 			.returning();
 
 		return reply.status(201).send({
-			data: siteData,
-			preview: generatedSite,
+			data: {
+				...siteData,
+				preview: generatedSite,
+			},
 			success: true,
 		});
 	} catch (error) {
@@ -169,7 +172,7 @@ export const getAllSites = async (request, reply) => {
 		const createdByProfile = alias(profiles, 'created_by_profile');
 		const updatedByProfile = alias(profiles, 'updated_by_profile');
 
-		const filters = [];
+		const filters = [eq(sites.isDraft, false)];
 
 		if (searchByName) filters.push(ilike(blocks.name, `%${searchByName}%`));
 		if (searchById) {
@@ -262,14 +265,46 @@ export const getOneSite = async (request, reply) => {
 		let preview;
 		if (previewFile) {
 			preview = await previewFile.async('string');
-		} else {
-			preview = 'Can`t find preview file';
 		}
 
 		reply.send({
 			success: true,
-			...site,
-			preview,
+			data: {
+				...site,
+				preview,
+			}
+		});
+	} catch (error) {
+		reply.code(500).send({
+			success: false,
+			error: error.message,
+		});
+	}
+};
+export const activateSite = async (request, reply) => {
+	try {
+		const { siteId } = request.params;
+
+		const [existing] = await db
+			.select()
+			.from(sites)
+			.where(eq(sites.id, Number(siteId)));
+
+		if (!existing) {
+			return reply.code(404).send({ success: false, error: 'Site not found' });
+		}
+
+		const [updatedSite] = await db
+			.update(sites)
+			.set({
+				isDraft: false,
+			})
+			.where(eq(sites.id, Number(siteId)))
+			.returning();
+
+		reply.send({
+			success: true,
+			data: updatedSite,
 		});
 	} catch (error) {
 		reply.code(500).send({

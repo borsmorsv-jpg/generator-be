@@ -57,6 +57,7 @@ export const templates = pgTable('templates', {
 export const sites = pgTable('sites', {
 	id: serial('id').primaryKey(),
 	name: varchar('name', { length: 255 }).notNull(),
+	isDraft: boolean('is_active').default(true).notNull(),
 	isActive: boolean('is_active').default(true).notNull(),
 	trafficSource: varchar('traffic_source', { length: 255 }).notNull(),
 	country: varchar('country', { length: 255 }).notNull(),
