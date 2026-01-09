@@ -24,6 +24,38 @@ function fillVariables(html, aiContent) {
 	return filledHtml;
 }
 
+function applyThemeToCss(originalCss, themeVariables) {
+	if (!themeVariables || Object.keys(themeVariables).length === 0) {
+		return originalCss;
+	}
+
+	let updatedCss = originalCss;
+
+	const rootMatch = updatedCss.match(/:root\s*\{[\s\S]*?\}/);
+
+	if (rootMatch) {
+		Object.entries(themeVariables).forEach(([varName, value]) => {
+			const regex = new RegExp(`${varName}\\s*:[^;]*;`, 'g');
+			const newDeclaration = `${varName}: ${value};`;
+
+			if (updatedCss.includes(varName)) {
+				updatedCss = updatedCss.replace(regex, newDeclaration);
+			} else {
+				updatedCss = updatedCss.replace(/:root\s*\{/, `:root {\n  ${newDeclaration}`);
+			}
+		});
+	} else {
+		let newRoot = ':root {\n';
+		Object.entries(themeVariables).forEach(([varName, value]) => {
+			newRoot += `  ${varName}: ${value};\n`;
+		});
+		newRoot += '}\n\n';
+		updatedCss = newRoot + updatedCss;
+	}
+
+	return updatedCss;
+}
+
 export const createSite = async (request, reply) => {
 	try {
 		const { prompt, templatesIds, isActive, name, trafficSource, country, language } =
@@ -39,6 +71,9 @@ export const createSite = async (request, reply) => {
 
 		let allStyles = '';
 		let allHtml = '';
+		let tokensInfo;
+
+		let allThemeVariables = {};
 
 		for (const blockDef of template.definition.blocks) {
 			const blocksOfType = await db
@@ -50,20 +85,38 @@ export const createSite = async (request, reply) => {
 				const randomBlock = blocksOfType[Math.floor(Math.random() * blocksOfType.length)];
 				const blockData = await downloadAndUnzipBlock(randomBlock.archiveUrl);
 
-				const aiContent = await generateAIContent(
+				const [aiContent, tokens] = await generateAIContent(
 					prompt,
 					blockData.definition.variables,
 					blockDef.type,
 				);
-
+				tokensInfo = tokens;
 				console.log('AI Content:', JSON.stringify(aiContent, null, 2));
 
-				const filledHtml = fillVariables(blockData.html, aiContent);
+				const themeVariables = aiContent.theme || {};
 
+				allThemeVariables = { ...allThemeVariables, ...themeVariables };
+
+				const contentForHtml = { ...aiContent };
+				delete contentForHtml.theme;
+
+				const filledHtml = fillVariables(blockData.html, contentForHtml);
 				allHtml += filledHtml + '\n';
-				allStyles += blockData.css + '\n';
+
+				const updatedCss = applyThemeToCss(blockData.css, themeVariables);
+				allStyles += updatedCss + '\n';
 			}
 		}
+
+		let finalStyles = '';
+		if (Object.keys(allThemeVariables).length > 0) {
+			finalStyles += ':root {\n';
+			Object.entries(allThemeVariables).forEach(([varName, value]) => {
+				finalStyles += `  ${varName}: ${value};\n`;
+			});
+			finalStyles += '}\n\n';
+		}
+		finalStyles += allStyles;
 
 		const generatedSite = `<!DOCTYPE html>
 <html lang="en">
@@ -80,7 +133,7 @@ export const createSite = async (request, reply) => {
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    ${allStyles}
+    ${finalStyles}
   </style>
 </head>
 <body>
@@ -118,6 +171,9 @@ ${allHtml}
 				language: language,
 				definition: template.id,
 				prompt: prompt,
+				totalTokens: tokensInfo.totalTokens,
+				completionTokens: tokensInfo.completionTokens,
+				promptTokens: tokensInfo.promptTokens,
 				createdBy: '67366103-2833-41a8-aea2-10d589a0705c',
 				updatedBy: '67366103-2833-41a8-aea2-10d589a0705c',
 			})
@@ -172,7 +228,7 @@ export const getAllSites = async (request, reply) => {
 		const createdByProfile = alias(profiles, 'created_by_profile');
 		const updatedByProfile = alias(profiles, 'updated_by_profile');
 
-		const filters = [eq(sites.isDraft, false)];
+		const filters = [];
 
 		if (searchByName) filters.push(ilike(blocks.name, `%${searchByName}%`));
 		if (searchById) {
@@ -206,9 +262,9 @@ export const getAllSites = async (request, reply) => {
 				definition: sites.definition,
 				createdAt: sites.createdAt,
 				updatedAt: sites.updatedAt,
-				language: sites.language,
-				trafficSource: sites.trafficSource,
-				country: sites.country,
+				promptTokens: sites.promptTokens,
+				completionTokens: sites.completionTokens,
+				totalTokens: sites.totalTokens,
 				createdByEmail: createdByProfile.email,
 				createdByUsername: createdByProfile.username,
 				updatedByEmail: updatedByProfile.email,
@@ -275,7 +331,7 @@ export const getOneSite = async (request, reply) => {
 			data: {
 				...site,
 				preview,
-			}
+			},
 		});
 	} catch (error) {
 		reply.code(500).send({

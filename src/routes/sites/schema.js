@@ -16,7 +16,7 @@ export const createSiteSchema = {
 			},
 			prompt: {
 				type: 'string',
-				maxLength: 1000,
+				maxLength: 5000,
 			},
 			isActive: {
 				type: 'boolean',
@@ -27,15 +27,15 @@ export const createSiteSchema = {
 			},
 			trafficSource: {
 				type: 'string',
-				maxLength: 10,
+				maxLength: 50,
 			},
 			country: {
 				type: 'string',
-				maxLength: 10,
+				maxLength: 50,
 			},
 			language: {
 				type: 'string',
-				maxLength: 10,
+				maxLength: 50,
 			},
 		},
 	},

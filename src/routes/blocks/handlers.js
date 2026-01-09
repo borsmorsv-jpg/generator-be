@@ -347,10 +347,10 @@ export const updateBlock = async (request, reply) => {
 					size: archiveResult.files['styles.css'].size,
 					lines: archiveResult.files['styles.css'].content.split('\n').length,
 				},
-				script: {
-					size: archiveResult.files['main.js'].size,
-					lines: archiveResult.files['main.js'].content.split('\n').length,
-				},
+				// script: {
+				// 	size: archiveResult.files['main.js'].size,
+				// 	lines: archiveResult.files['main.js'].content.split('\n').length,
+				// },
 			},
 			validation: {
 				isValid: archiveResult.isValid,
