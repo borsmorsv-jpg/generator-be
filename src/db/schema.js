@@ -78,3 +78,16 @@ export const sites = pgTable('sites', {
 	completionTokens: integer('completion_tokens'),
 	totalTokens: integer('total_tokens'),
 });
+
+export const prompts = pgTable('prompts', {
+	id: serial('id').primaryKey(),
+	promptValue: varchar('prompt_value', { length: 255 }).notNull(),
+	createdBy: uuid('created_by')
+		.notNull()
+		.references(() => profiles.userId),
+	updatedBy: uuid('updated_by').references(() => profiles.userId, {
+		onDelete: 'set null',
+	}),
+	createdAt: timestamp('created_at').defaultNow().notNull(),
+	updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});

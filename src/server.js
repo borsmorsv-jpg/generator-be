@@ -4,6 +4,7 @@ import templatesRoutes from './routes/templates/index.js';
 import authRoutes from './routes/auth/index.js';
 import usersRoutes from './routes/users/index.js';
 import sitesRoutes from './routes/sites/index.js';
+import promptRoutes from './routes/prompts/index.js';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { config } from './config/index.js';
@@ -27,6 +28,7 @@ fastify.register(templatesRoutes, { prefix: 'api/v1/templates' });
 fastify.register(usersRoutes, { prefix: 'api/v1/users' });
 fastify.register(authRoutes, { prefix: 'api/v1/auth' });
 fastify.register(sitesRoutes, { prefix: 'api/v1/sites' });
+fastify.register(promptRoutes, { prefix: 'api/v1/prompts' });
 
 try {
 	await fastify.listen({

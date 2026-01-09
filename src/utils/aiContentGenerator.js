@@ -29,12 +29,16 @@ async function generateImageWithFal(prompt) {
 	}
 }
 
-export async function generateAIContent(prompt, variables, blockCategory) {
+export async function generateAIContent(prompt, variables, blockCategory, country, language) {
 	const variablesDescription = variables
 		.map((v) => `- ${v.name} (type: ${v.type}, required: ${v.required})`)
 		.join('\n');
 	const systemPrompt = `
 You are a content AND visual style generator for website blocks.
+
+STRICT LOCALIZATION RULES:
+- Language: ${language} (Generate ALL text content in this language)
+- Country: ${country} (Adapt terminology, currency, and cultural context for this country)
 
 Your task:
 - Generate content variables for the block
@@ -83,6 +87,8 @@ Rules for design variables:
 RESPONSE FORMAT:
 
 Return ONLY valid JSON.
+CRITICAL: Do NOT include any comments (like // or /* */) inside the JSON code.
+All text values must be in ${language}.
 
 1. All content variables MUST be returned at the ROOT level
 2. Design tokens MUST be returned inside a "theme" object
@@ -122,7 +128,6 @@ Keep content concise and professional.
 	});
 	const content = completion.choices[0].message.content;
 	const jsonMatch = content.match(/\{[\s\S]*\}/);
-
 	if (!jsonMatch) {
 		throw new Error('AI did not return valid JSON');
 	}

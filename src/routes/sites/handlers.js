@@ -89,6 +89,8 @@ export const createSite = async (request, reply) => {
 					prompt,
 					blockData.definition.variables,
 					blockDef.type,
+					country,
+					language,
 				);
 				tokensInfo = tokens;
 				console.log('AI Content:', JSON.stringify(aiContent, null, 2));
