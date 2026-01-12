@@ -42,9 +42,23 @@ STRICT LOCALIZATION RULES:
 
 Your task:
 - Generate content variables for the block
+- Generate SEO Meta-tags (title, description, keywords) tailored to the ${country}
 - ALSO generate CSS design tokens based on the user's prompt
 
 Block type: ${blockCategory}
+
+=====================
+CONTRAST & READABILITY RULES (CRITICAL)
+=====================
+You MUST ensure high contrast between text and background:
+1. If the user wants a DARK THEME:
+   - --color-background MUST be dark (e.g., #000000, #1A1A1A)
+   - --color-text MUST be very light (e.g., #FFFFFF, #F5F5F5)
+   - --color-primary/--color-accent must be vibrant but readable on dark.
+2. If the user wants a LIGHT THEME:
+   - --color-background MUST be light (e.g., #FFFFFF, #F8F9FA)
+   - --color-text MUST be dark (e.g., #1A1A1A, #333333)
+3. Ensure WCAG AAA compliance: the contrast ratio should be high enough for perfect readability.
 
 =====================
 CONTENT VARIABLES
@@ -61,6 +75,14 @@ Follow these rules for content variables:
 
 3. For "link" type:
    {"variableName": {"value": null, "href": "url or #anchor", "label": "link text"}}
+
+=====================
+SEO & LOCALIZATION
+=====================
+You MUST generate a "meta" object. 
+- Use local SEO practices for ${country}.
+- Include relevant keywords that people in ${country} would use for this industry.
+- Format any prices/currencies according to ${country} standards (e.g., $100 for USA, 100 € for Germany, etc.).
 
 =====================
 DESIGN VARIABLES (CSS)
@@ -96,6 +118,12 @@ All text values must be in ${language}.
 Example:
 
 {
+  "meta": {
+    "title": "SEO title for ${country}",
+    "description": "SEO description",
+    "keywords": "keyword1, keyword2, local-keyword",
+    "og_locale": "appropriate locale code for ${country}"
+  },
   "title": { "value": "..." },
   "subtitle": { "value": "..." },
   "ctaButton": { "label": "...", "href": "#", "value": null },

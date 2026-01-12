@@ -6,6 +6,12 @@ import { alias } from 'drizzle-orm/pg-core';
 import { generateAIContent } from '../../utils/aiContentGenerator.js';
 import { downloadAndUnzipBlock } from '../../utils/zipHandler.js';
 import JSZip from 'jszip';
+import { PRICE_FOR_PROMPTS } from '../../config/constants.js';
+
+function cutNumber(number, amountAfterDot) {
+	const factor = 10 ** amountAfterDot;
+	return Math.floor(number * factor) / factor;
+}
 
 function fillVariables(html, aiContent) {
 	let filledHtml = html;
@@ -56,6 +62,27 @@ function applyThemeToCss(originalCss, themeVariables) {
 	return updatedCss;
 }
 
+function generateMetaTags(metaObject) {
+	if (!metaObject) return '';
+
+	return Object.entries(metaObject)
+		.map(([key, value]) => {
+			if (!value) return '';
+			if (key.toLowerCase() === 'title') {
+				return `<title>${value}</title>`;
+			}
+			if (key.toLowerCase() === 'canonical') {
+				return `<link rel="canonical" href="${value}" />`;
+			}
+			if (key.startsWith('og_')) {
+				const property = key.replace('_', ':');
+				return `<meta property="${property}" content="${value}">`;
+			}
+			return `<meta name="${key}" content="${value}">`;
+		})
+		.join('\n  ');
+}
+
 export const createSite = async (request, reply) => {
 	try {
 		const { prompt, templatesIds, isActive, name, trafficSource, country, language } =
@@ -74,6 +101,7 @@ export const createSite = async (request, reply) => {
 		let tokensInfo;
 
 		let allThemeVariables = {};
+		let metaTags = '';
 
 		for (const blockDef of template.definition.blocks) {
 			const blocksOfType = await db
@@ -107,6 +135,7 @@ export const createSite = async (request, reply) => {
 
 				const updatedCss = applyThemeToCss(blockData.css, themeVariables);
 				allStyles += updatedCss + '\n';
+				metaTags = generateMetaTags(aiContent.meta);
 			}
 		}
 
@@ -121,11 +150,11 @@ export const createSite = async (request, reply) => {
 		finalStyles += allStyles;
 
 		const generatedSite = `<!DOCTYPE html>
-<html lang="en">
+<html lang="${language}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Generated Site</title>
+  ${metaTags}
   <style>
     * {
       margin: 0;
@@ -157,6 +186,11 @@ ${allHtml}
 			throw error;
 		}
 
+		const inputPrice = tokensInfo.promptTokens * (PRICE_FOR_PROMPTS.input / 1000000);
+		const outputPrice = tokensInfo.completionTokens * (PRICE_FOR_PROMPTS.output / 1000000);
+
+		const totalPrice = inputPrice + outputPrice;
+
 		const { data: urlData } = supabase.storage.from('sites').getPublicUrl(fileName);
 
 		console.log('urlData.publicUrl', urlData.publicUrl);
@@ -176,6 +210,9 @@ ${allHtml}
 				totalTokens: tokensInfo.totalTokens,
 				completionTokens: tokensInfo.completionTokens,
 				promptTokens: tokensInfo.promptTokens,
+				inputUsdPrice: cutNumber(inputPrice, 6),
+				outputUsdPrice: cutNumber(outputPrice, 6),
+				totalUsdPrice: cutNumber(totalPrice, 6),
 				createdBy: '67366103-2833-41a8-aea2-10d589a0705c',
 				updatedBy: '67366103-2833-41a8-aea2-10d589a0705c',
 			})
@@ -264,9 +301,6 @@ export const getAllSites = async (request, reply) => {
 				definition: sites.definition,
 				createdAt: sites.createdAt,
 				updatedAt: sites.updatedAt,
-				language: sites.language,
-				country: sites.country,
-				trafficSource: sites.trafficSource,
 				promptTokens: sites.promptTokens,
 				completionTokens: sites.completionTokens,
 				totalTokens: sites.totalTokens,
