@@ -1,5 +1,11 @@
-import { activateSite, createSite, getAllSites, getOneSite } from './handlers.js';
-import { activateSiteSchema, createSiteSchema, getAllSitesSchema, getSiteSchema } from './schema.js';
+import { activateSite, createSite, getAllSites, getOneSite, regenerateSite } from './handlers.js';
+import {
+	activateSiteSchema,
+	createSiteSchema,
+	getAllSitesSchema,
+	getSiteSchema,
+	regenerateSiteSchema,
+} from './schema.js';
 
 const routes = async (fastify) => {
 	fastify.post('/', {
@@ -17,6 +23,10 @@ const routes = async (fastify) => {
 	fastify.get('/:siteId', {
 		handler: getOneSite,
 		schema: getSiteSchema,
+	});
+	fastify.put('/:siteId', {
+		handler: regenerateSite,
+		schema: regenerateSiteSchema,
 	});
 };
 

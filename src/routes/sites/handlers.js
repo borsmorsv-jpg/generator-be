@@ -7,6 +7,7 @@ import { generateAIContent } from '../../utils/aiContentGenerator.js';
 import { downloadAndUnzipBlock } from '../../utils/zipHandler.js';
 import JSZip from 'jszip';
 import { PRICE_FOR_PROMPTS } from '../../config/constants.js';
+import slugify from "slugify";
 
 function cutNumber(number, amountAfterDot) {
 	const factor = 10 ** amountAfterDot;
@@ -98,46 +99,77 @@ export const createSite = async (request, reply) => {
 
 		let allStyles = '';
 		let allHtml = '';
-		let tokensInfo;
+		let tokensInfo = {
+			totalPromptTokens: 0,
+			totalCompletionTokens: 0,
+			totalTokens: 0,
+		};
 
 		let allThemeVariables = {};
 		let metaTags = '';
 
-		for (const blockDef of template.definition.blocks) {
-			const blocksOfType = await db
-				.select()
-				.from(blocks)
-				.where(eq(blocks.category, blockDef.type));
+		const blockPromises = template.definition.blocks.map(async (blockDef) => {
+			let randomBlockId = null;
+			try {
+				const blocksOfType = await db
+					.select()
+					.from(blocks)
+					.where(eq(blocks.category, blockDef.type));
 
-			if (blocksOfType.length > 0) {
-				const randomBlock = blocksOfType[Math.floor(Math.random() * blocksOfType.length)];
-				const blockData = await downloadAndUnzipBlock(randomBlock.archiveUrl);
+				if (blocksOfType.length > 0) {
+					const randomBlock =
+						blocksOfType[Math.floor(Math.random() * blocksOfType.length)];
+					randomBlockId = randomBlock.id;
+					const blockData = await downloadAndUnzipBlock(randomBlock.archiveUrl);
 
-				const [aiContent, tokens] = await generateAIContent(
-					prompt,
-					blockData.definition.variables,
-					blockDef.type,
-					country,
-					language,
-				);
-				tokensInfo = tokens;
-				console.log('AI Content:', JSON.stringify(aiContent, null, 2));
-
-				const themeVariables = aiContent.theme || {};
-
-				allThemeVariables = { ...allThemeVariables, ...themeVariables };
-
-				const contentForHtml = { ...aiContent };
-				delete contentForHtml.theme;
-
-				const filledHtml = fillVariables(blockData.html, contentForHtml);
-				allHtml += filledHtml + '\n';
-
-				const updatedCss = applyThemeToCss(blockData.css, themeVariables);
-				allStyles += updatedCss + '\n';
-				metaTags = generateMetaTags(aiContent.meta);
+					const [aiContent, tokens] = await generateAIContent(
+						prompt,
+						blockData.definition.variables,
+						blockDef.type,
+						country,
+						language,
+					);
+					return {
+						aiContent,
+						tokens,
+						blockData,
+					};
+				}
+			} catch (err) {
+				throw new Error(`Block generation with id - ${randomBlockId} was failed `);
 			}
-		}
+		});
+		const blockResults = await Promise.allSettled(blockPromises);
+		blockResults.forEach((result) => {
+			if (result.status === 'rejected') {
+				console.log(result.reason);
+				return;
+			}
+			const blockResult = result.value;
+			if (!blockResult) return;
+			const { aiContent, tokens, blockData } = blockResult;
+
+			tokensInfo.totalPromptTokens += tokens.promptTokens;
+			tokensInfo.totalCompletionTokens += tokens.completionTokens;
+			tokensInfo.totalTokens += tokens.totalTokens;
+
+			console.log('AI Content:', JSON.stringify(aiContent, null, 2));
+
+			const themeVariables = aiContent.theme || {};
+			allThemeVariables = { ...allThemeVariables, ...themeVariables };
+
+			const contentForHtml = { ...aiContent };
+			delete contentForHtml.theme;
+			delete contentForHtml.meta;
+
+			const filledHtml = fillVariables(blockData.html, contentForHtml);
+			allHtml += filledHtml + '\n';
+
+			const updatedCss = applyThemeToCss(blockData.css, themeVariables);
+			allStyles += updatedCss + '\n';
+
+			metaTags = generateMetaTags(aiContent.meta);
+		});
 
 		let finalStyles = '';
 		if (Object.keys(allThemeVariables).length > 0) {
@@ -176,8 +208,13 @@ ${allHtml}
 		zip.addFile('index.html', Buffer.from(generatedSite, 'utf8'));
 
 		const zipBuffer = zip.toBuffer();
-		const fileName = `site-${name}-${new Date().getTime()}.zip`;
-		const { data, error } = await supabase.storage.from('sites').upload(fileName, zipBuffer, {
+
+		const safeName = slugify(`site-${name}-${new Date().getTime()}.zip`, {
+			lower: true,
+			strict: true,
+		});
+
+		const { error } = await supabase.storage.from('sites').upload(safeName, zipBuffer, {
 			contentType: 'application/zip',
 			upsert: false,
 		});
@@ -186,12 +223,12 @@ ${allHtml}
 			throw error;
 		}
 
-		const inputPrice = tokensInfo.promptTokens * (PRICE_FOR_PROMPTS.input / 1000000);
-		const outputPrice = tokensInfo.completionTokens * (PRICE_FOR_PROMPTS.output / 1000000);
+		const inputPrice = tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS.input / 1000000);
+		const outputPrice = tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS.output / 1000000);
 
 		const totalPrice = inputPrice + outputPrice;
 
-		const { data: urlData } = supabase.storage.from('sites').getPublicUrl(fileName);
+		const { data: urlData } = supabase.storage.from('sites').getPublicUrl(safeName);
 
 		console.log('urlData.publicUrl', urlData.publicUrl);
 
@@ -208,8 +245,8 @@ ${allHtml}
 				definition: template.id,
 				prompt: prompt,
 				totalTokens: tokensInfo.totalTokens,
-				completionTokens: tokensInfo.completionTokens,
-				promptTokens: tokensInfo.promptTokens,
+				completionTokens: tokensInfo.totalCompletionTokens,
+				promptTokens: tokensInfo.totalPromptTokens,
 				inputUsdPrice: cutNumber(inputPrice, 6),
 				outputUsdPrice: cutNumber(outputPrice, 6),
 				totalUsdPrice: cutNumber(totalPrice, 6),
@@ -304,6 +341,9 @@ export const getAllSites = async (request, reply) => {
 				promptTokens: sites.promptTokens,
 				completionTokens: sites.completionTokens,
 				totalTokens: sites.totalTokens,
+				totalUsdPrice: sites.totalUsdPrice,
+				inputUsdPrice: sites.inputUsdPrice,
+				outputUsdPrice: sites.outputUsdPrice,
 				createdByEmail: createdByProfile.email,
 				createdByUsername: createdByProfile.username,
 				updatedByEmail: updatedByProfile.email,
@@ -379,6 +419,7 @@ export const getOneSite = async (request, reply) => {
 		});
 	}
 };
+
 export const activateSite = async (request, reply) => {
 	try {
 		const { siteId } = request.params;
@@ -408,6 +449,190 @@ export const activateSite = async (request, reply) => {
 		reply.code(500).send({
 			success: false,
 			error: error.message,
+		});
+	}
+};
+
+export const regenerateSite = async (request, reply) => {
+	try {
+		const { siteId } = request.params;
+		const { prompt } = request.body;
+
+		const [result] = await db.select().from(sites).where(eq(sites.id, siteId));
+		const {
+			name,
+			definition,
+			country,
+			language,
+			totalTokens: totalTokensDB,
+			promptTokens: promptTokensDB,
+			completionTokens: completionTokensDB,
+		} = result;
+		const template = await db.query.templates.findFirst({
+			where: eq(templates.id, definition),
+		});
+
+		if (!template || !template.definition?.blocks) {
+			return reply.status(404).send({ error: 'Template not found' });
+		}
+
+		let allStyles = '';
+		let allHtml = '';
+		let tokensInfo = {
+			totalPromptTokens: promptTokensDB,
+			totalCompletionTokens: completionTokensDB,
+			totalTokens: totalTokensDB,
+		};
+
+		let allThemeVariables = {};
+		let metaTags = '';
+
+		const blockPromises = template.definition.blocks.map(async (blockDef) => {
+			let randomBlockId = null;
+			try {
+				const blocksOfType = await db
+					.select()
+					.from(blocks)
+					.where(eq(blocks.category, blockDef.type));
+
+				if (blocksOfType.length > 0) {
+					const randomBlock =
+						blocksOfType[Math.floor(Math.random() * blocksOfType.length)];
+					randomBlockId = randomBlock.id;
+					const blockData = await downloadAndUnzipBlock(randomBlock.archiveUrl);
+
+					const [aiContent, tokens] = await generateAIContent(
+						prompt,
+						blockData.definition.variables,
+						blockDef.type,
+						country,
+						language,
+					);
+					return {
+						aiContent,
+						tokens,
+						blockData,
+					};
+				}
+			} catch (err) {
+				throw new Error(`Block generation with id - ${randomBlockId} was failed `);
+			}
+		});
+		const blockResults = await Promise.allSettled(blockPromises);
+		blockResults.forEach((result) => {
+			if (result.status === 'rejected') {
+				console.log(result.reason);
+				return;
+			}
+			const blockResult = result.value;
+			if (!blockResult) return;
+			const { aiContent, tokens, blockData } = blockResult;
+
+			tokensInfo.totalPromptTokens += tokens.promptTokens;
+			tokensInfo.totalCompletionTokens += tokens.completionTokens;
+			tokensInfo.totalTokens += tokens.totalTokens;
+
+			const themeVariables = aiContent.theme || {};
+			allThemeVariables = { ...allThemeVariables, ...themeVariables };
+
+			const contentForHtml = { ...aiContent };
+			delete contentForHtml.theme;
+			delete contentForHtml.meta;
+
+			const filledHtml = fillVariables(blockData.html, contentForHtml);
+			allHtml += filledHtml + '\n';
+
+			const updatedCss = applyThemeToCss(blockData.css, themeVariables);
+			allStyles += updatedCss + '\n';
+
+			metaTags = generateMetaTags(aiContent.meta);
+		});
+
+		let finalStyles = '';
+		if (Object.keys(allThemeVariables).length > 0) {
+			finalStyles += ':root {\n';
+			Object.entries(allThemeVariables).forEach(([varName, value]) => {
+				finalStyles += `  ${varName}: ${value};\n`;
+			});
+			finalStyles += '}\n\n';
+		}
+		finalStyles += allStyles;
+
+		const generatedSite = `<!DOCTYPE html>
+<html lang="${language}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  ${metaTags}
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    ${finalStyles}
+  </style>
+</head>
+<body>
+${allHtml}
+</body>
+</html>`;
+
+		const zip = new AdmZip();
+		zip.addFile('index.html', Buffer.from(generatedSite, 'utf8'));
+
+		const zipBuffer = zip.toBuffer();
+		const safeName = slugify(`site-${name}-${new Date().getTime()}.zip`, {
+			lower: true,
+			strict: true,
+		});
+
+		const { error } = await supabase.storage.from('sites').upload(safeName, zipBuffer, {
+			contentType: 'application/zip',
+			upsert: false,
+		});
+
+		if (error) {
+			throw error;
+		}
+
+		const inputPrice = tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS.input / 1000000);
+		const outputPrice = tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS.output / 1000000);
+
+		const totalPrice = inputPrice + outputPrice;
+
+		const { data: urlData } = supabase.storage.from('sites').getPublicUrl(safeName);
+
+		const [siteData] = await db
+			.update(sites)
+			.set({
+				prompt,
+				archiveUrl: urlData.publicUrl,
+				totalTokens: tokensInfo.totalTokens,
+				completionTokens: tokensInfo.totalCompletionTokens,
+				promptTokens: tokensInfo.totalPromptTokens,
+				inputUsdPrice: cutNumber(inputPrice, 6),
+				outputUsdPrice: cutNumber(outputPrice, 6),
+				totalUsdPrice: cutNumber(totalPrice, 6),
+				updatedAt: new Date(),
+			})
+			.where(eq(sites.id, siteId))
+			.returning();
+
+		return reply.send({
+			data: {
+				...siteData,
+				preview: generatedSite,
+			},
+			success: true,
+		});
+	} catch (err) {
+		reply.status(500).send({
+			error: err.message,
+			success: false,
 		});
 	}
 };

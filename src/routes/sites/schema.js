@@ -115,3 +115,26 @@ export const activateSiteSchema = {
 		required: ['siteId'],
 	},
 };
+
+export const regenerateSiteSchema = {
+	tags: ['Sites'],
+	summary: 'Activate generated site',
+	description: 'Activate generated site',
+	params: {
+		type: 'object',
+		properties: {
+			siteId: { type: 'integer' },
+		},
+		required: ['siteId'],
+	},
+	body: {
+		type: 'object',
+		required: ['prompt'],
+		properties: {
+			prompt: {
+				type: 'string',
+				maxLength: 5000,
+			},
+		},
+	},
+};

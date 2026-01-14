@@ -48,19 +48,6 @@ Your task:
 Block type: ${blockCategory}
 
 =====================
-CONTRAST & READABILITY RULES (CRITICAL)
-=====================
-You MUST ensure high contrast between text and background:
-1. If the user wants a DARK THEME:
-   - --color-background MUST be dark (e.g., #000000, #1A1A1A)
-   - --color-text MUST be very light (e.g., #FFFFFF, #F5F5F5)
-   - --color-primary/--color-accent must be vibrant but readable on dark.
-2. If the user wants a LIGHT THEME:
-   - --color-background MUST be light (e.g., #FFFFFF, #F8F9FA)
-   - --color-text MUST be dark (e.g., #1A1A1A, #333333)
-3. Ensure WCAG AAA compliance: the contrast ratio should be high enough for perfect readability.
-
-=====================
 CONTENT VARIABLES
 =====================
 Variables to fill:
@@ -94,10 +81,49 @@ Allowed CSS variables to override:
 - --color-secondary
 - --color-accent
 - --color-background
+- --color-surface
 - --color-text
 - --font-sans
 - --radius-md
 - --shadow-md
+
+CRITICAL READABILITY RULES — MUST BE FOLLOWED EVERY TIME:
+
+1. --color-text MUST have very strong contrast against BOTH:
+   - --color-background (main page background)
+   - --color-surface     (cards, sections, modals, etc.)
+
+   Recommended:
+   - Dark theme / dark backgrounds → --color-text: #f0f0f0 – #ffffff (or #e2e8f0, #ddd)
+   - Light theme / light backgrounds → --color-text: #111111 – #333333 (or #1a1a1a, #222)
+
+2. --color-surface rules:
+   - In dark theme: should be darker or slightly lighter than --color-background, but still dark (#1a1a1a – #2d2d2d – #333333)
+   - In light theme: should be lighter or slightly darker than --color-background, but still light (#f8f9fa – #ffffff – #f0f0f0)
+   - NEVER use --color-surface that makes text unreadable when overlaid with --color-text
+
+3. Forbidden combinations:
+   - light text (#aaa–#fff) on light background/surface (#ddd–#fff)
+   - dark text (#000–#666) on dark background/surface (#111–#444)
+   - low contrast (WCAG AA < 4.5:1 or AAA < 7:1 strongly preferred)
+
+4. Typical safe combinations (examples):
+   Dark mode:
+   --color-background: "#0f0f0f" / "#111111" / "#121212"
+   --color-surface:    "#1a1a1a" / "#1e293b" / "#2d2d2d" / "#172554"
+   --color-text:       "#f0f0f0" / "#e2e8f0" / "#e5e5e5" / "#ffffff"
+
+   Light mode:
+   --color-background: "#ffffff" / "#f8f9fa" / "#fafafa"
+   --color-surface:    "#ffffff" / "#f0f0f0" / "#fefefe" / "#f9f9f9"
+   --color-text:       "#111111" / "#1a1a1a" / "#222222" / "#0f0f0f"
+
+5. If user asks for dark theme / dark mode / тёмна тема → dark --color-background + darker/lighter --color-surface + light --color-text
+   If user asks for light theme / світла тема → light --color-background + light --color-surface + dark --color-text
+
+6. --color-primary, --color-secondary, --color-accent — use for buttons, links, highlights. They should have good contrast with --color-text and --color-surface when used as backgrounds.
+
+7. Do NOT invent new CSS variables. Do NOT remove variables.
 
 Rules for design variables:
 - Colors must be valid HEX values
