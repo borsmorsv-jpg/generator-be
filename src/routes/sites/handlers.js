@@ -584,7 +584,9 @@ export const regenerateSite = async (request, reply) => {
 			generatedTheme,
 		};
 
-		const urlData = replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl);
+		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl);
+
+		console.log("urlData", urlData);
 
 		const [siteData] = await db
 			.update(sites)
@@ -600,7 +602,9 @@ export const regenerateSite = async (request, reply) => {
 				totalUsdPrice: cutNumber(totalPrice, 6),
 				updatedBy: '67366103-2833-41a8-aea2-10d589a0705c',
 			})
-			.where(eq(sites.id, siteId))
+			.where(eq(sites.id, siteId)).returning();
+
+		console.log("returned siteData", siteData)
 
 		return reply.status(200).send({
 			data: {
@@ -747,7 +751,7 @@ export const regenerateBlock = async (request, reply) => {
 			site.language,
 			site.country,
 		);
-		const urlData = replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl);
+		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl);
 
 		const siteConfigDetailed = {
 			pages: sitePages?.map((page) => ({
