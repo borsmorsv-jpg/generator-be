@@ -287,12 +287,12 @@ export const replaceSiteZipWithNew = async (sitePages, siteName, existingArchive
 		throw uploadError;
 	}
 
-	const { data: urlData } = supabase.storage.from('sites').getPublicUrl(safeName);
+	// const oldArchiveName = existingArchiveUrl?.split('/').pop();
+	// if (oldArchiveName) {
+	// 	await supabase.storage.from('sites').remove([oldArchiveName]);
+	// }
 
-	const oldArchiveName = existingArchiveUrl?.split('/').pop();
-	if (oldArchiveName) {
-		await supabase.storage.from('sites').remove([oldArchiveName]);
-	}
+	const { data: urlData } = supabase.storage.from('sites').getPublicUrl(safeName);
 
 	return urlData;
 };
