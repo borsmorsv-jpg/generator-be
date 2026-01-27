@@ -1,9 +1,17 @@
-import { activateSite, createSite, getAllSites, getOneSite, regenerateSite } from './handlers.js';
+import {
+	activateSite,
+	createSite,
+	getAllSites,
+	getOneSite,
+	regenerateBlock,
+	regenerateSite,
+} from './handlers.js';
 import {
 	activateSiteSchema,
 	createSiteSchema,
 	getAllSitesSchema,
 	getSiteSchema,
+	regenerateBlockSchema,
 	regenerateSiteSchema,
 } from './schema.js';
 
@@ -27,6 +35,10 @@ const routes = async (fastify) => {
 	fastify.put('/:siteId', {
 		handler: regenerateSite,
 		schema: regenerateSiteSchema,
+	});
+	fastify.put('/:siteId/block', {
+		handler: regenerateBlock,
+		schema: regenerateBlockSchema,
 	});
 };
 

@@ -156,39 +156,37 @@ export const createBlock = async (request, reply) => {
 
 		const archiveUrl = urlData.publicUrl;
 
-		const definitionContent = archiveResult.files['definition.json'].content;
-		const templateDefinition = JSON.parse(definitionContent);
-
-		console.log('archiveResult.files', archiveResult.files);
+		// const definitionContent = archiveResult.files['definition.json'].content;
+		// const templateDefinition = JSON.parse(definitionContent);
 
 		const blockDefinition = {
 			originalArchive: fileData.filename,
 			mimeType: fileData.mimetype,
 			archiveSize: archiveBuffer.length,
-			template: {
-				name: name,
-				description: templateDefinition.description || '',
-			},
-			files: {
-				template: {
-					size: archiveResult.files['template.html'].size,
-					lines: archiveResult.files['template.html'].content.split('\n').length,
-				},
-				styles: {
-					size: archiveResult.files['styles.css'].size,
-					lines: archiveResult.files['styles.css'].content.split('\n').length,
-				},
-				// script: {
-				//   size: archiveResult.files["main.js"].size,
-				//   lines: archiveResult.files["main.js"].content.split("\n").length,
-				// },
-			},
-			validation: {
-				isValid: archiveResult.isValid,
-				requiredFiles: archiveProcessor.requiredFiles,
-				totalFiles: archiveResult.fileCount,
-				validatedAt: new Date().toISOString(),
-			},
+			// template: {
+			// 	name: name,
+			// 	description: templateDefinition.description || '',
+			// },
+			// files: {
+			// 	template: {
+			// 		size: archiveResult.files['template.html'].size,
+			// 		lines: archiveResult.files['template.html'].content.split('\n').length,
+			// 	},
+			// 	styles: {
+			// 		size: archiveResult.files['styles.css'].size,
+			// 		lines: archiveResult.files['styles.css'].content.split('\n').length,
+			// 	},
+			// 	// script: {
+			// 	//   size: archiveResult.files["main.js"].size,
+			// 	//   lines: archiveResult.files["main.js"].content.split("\n").length,
+			// 	// },
+			// },
+			// validation: {
+			// 	isValid: archiveResult.isValid,
+			// 	requiredFiles: archiveProcessor.requiredFiles,
+			// 	totalFiles: archiveResult.fileCount,
+			// 	validatedAt: new Date().toISOString(),
+			// },
 		};
 
 		const [newBlock] = await db
@@ -325,39 +323,10 @@ export const updateBlock = async (request, reply) => {
 
 		archiveProcessor.validateArchive(archiveBuffer, fileData.mimetype, fileData.filename);
 
-		const archiveResult = await archiveProcessor.extractAndValidate(archiveBuffer);
-
-		const definitionContent = archiveResult.files['definition.json'].content;
-		const templateDefinition = JSON.parse(definitionContent || '{}');
-
 		const newDefinition = {
 			originalArchive: fileData.filename,
 			mimeType: fileData.mimetype,
 			archiveSize: archiveBuffer.length,
-			template: {
-				name: updatePayload.name,
-				description: templateDefinition.description || '',
-			},
-			files: {
-				template: {
-					size: archiveResult.files['template.html'].size,
-					lines: archiveResult.files['template.html'].content.split('\n').length,
-				},
-				styles: {
-					size: archiveResult.files['styles.css'].size,
-					lines: archiveResult.files['styles.css'].content.split('\n').length,
-				},
-				// script: {
-				// 	size: archiveResult.files['main.js'].size,
-				// 	lines: archiveResult.files['main.js'].content.split('\n').length,
-				// },
-			},
-			validation: {
-				isValid: archiveResult.isValid,
-				requiredFiles: archiveProcessor.requiredFiles,
-				totalFiles: archiveResult.fileCount,
-				validatedAt: new Date().toISOString(),
-			},
 		};
 
 		const timestamp = Date.now();
@@ -437,7 +406,6 @@ export const updateBlock = async (request, reply) => {
 export const getOneBlock = async (request, reply) => {
 	try {
 		const { blockId } = request.params;
-		console.log('blockId', blockId);
 
 		const [block] = await db
 			.select()

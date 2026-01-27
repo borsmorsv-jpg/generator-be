@@ -20,8 +20,6 @@ async function generateImageWithFal(prompt) {
 			},
 		});
 
-		console.log('Image result', result);
-
 		return result.images[0].url;
 	} catch (error) {
 		console.error('Fal.ai error:', error);
@@ -29,7 +27,15 @@ async function generateImageWithFal(prompt) {
 	}
 }
 
-export async function generateAIContent(prompt, variables, blockCategory, country, language) {
+export async function generateAIContent(
+	prompt,
+	variables,
+	blockCategory,
+	country,
+	language,
+	currentPage,
+	isFirstBlock,
+) {
 	const variablesDescription = variables
 		.map((v) => `- ${v.name} (type: ${v.type}, required: ${v.required})`)
 		.join('\n');
@@ -39,13 +45,27 @@ You are a content AND visual style generator for website blocks.
 STRICT LOCALIZATION RULES:
 - Language: ${language} (Generate ALL text content in this language)
 - Country: ${country} (Adapt terminology, currency, and cultural context for this country)
+- Page Context: ${currentPage} (Tailor the tone and content specifically for this page)
 
 Your task:
+${isFirstBlock ? `- Generate SEO Meta-tags (title, description, keywords) tailored to the ${country}` : ''}
 - Generate content variables for the block
-- Generate SEO Meta-tags (title, description, keywords) tailored to the ${country}
-- ALSO generate CSS design tokens based on the user's prompt
 
 Block type: ${blockCategory}
+
+${
+	isFirstBlock
+		? `
+=====================
+SEO & LOCALIZATION
+=====================
+You MUST generate a "meta" object.
+- Use local SEO practices for ${country}.
+- Include relevant keywords that people in ${country} would use for this industry.
+- Format any prices/currencies according to ${country} standards (e.g., $100 for USA, 100 € for Germany, etc.).
+`
+		: ''
+}
 
 =====================
 CONTENT VARIABLES
@@ -63,13 +83,200 @@ Follow these rules for content variables:
 3. For "link" type:
    {"variableName": {"value": null, "href": "url or #anchor", "label": "link text"}}
 
+ADDITIONAL CONTEXT RULES:
+- If currentPage is "Main Page", the content should be high-level and introductory.
+- If currentPage is "Services" or "Pricing", focus on value propositions and calls to action.
+- Adapt the messaging to fit the logical flow of the ${currentPage} page.
+
+RESPONSE FORMAT:
+
+Return ONLY valid JSON.
+CRITICAL: Do NOT include any comments (like // or /* */) inside the JSON code.
+All text values must be in ${language}.
+
+1. All content variables MUST be returned at the ROOT level
+
+Example:
+
+{
+
+${
+	isFirstBlock
+		? `"meta": {
+    "title": "SEO title for ${country}",
+    "description": "SEO description",
+    "keywords": "keyword1, keyword2, local-keyword",
+    "og_locale": "appropriate locale code for ${country}"
+  },`
+		: ''
+}
+  "title": { "value": "..." },
+  "subtitle": { "value": "..." },
+  "ctaButton": { "label": "...", "href": "#", "value": null },
+}
+Keep content concise and professional.
+`;
+
+	const completion = await openai.chat.completions.create({
+		model: 'gpt-4o-mini',
+		messages: [
+			{ role: 'system', content: systemPrompt },
+			{ role: 'user', content: prompt || 'Create professional website content' },
+		],
+		temperature: 0.7,
+	});
+	const content = completion.choices[0].message.content;
+	const jsonMatch = content.match(/\{[\s\S]*\}/);
+	if (!jsonMatch) {
+		throw new Error('AI did not return valid JSON');
+	}
+
+	const result = JSON.parse(jsonMatch[0]);
+
+	for (const varName of Object.keys(result)) {
+		const variable = variables.find((v) => v.name === varName);
+		if (variable?.type === 'image') {
+			const description = result[varName].src || `${blockCategory} ${varName}`;
+			console.log(`Generating image for ${varName}: ${description}`);
+			result[varName].src = await generateImageWithFal(description);
+		}
+	}
+
+	return [
+		result,
+		{
+			promptTokens: completion.usage.prompt_tokens,
+			completionTokens: completion.usage.completion_tokens,
+			totalTokens: completion.usage.total_tokens,
+		},
+	];
+}
+
+export async function generateReusableBlocks(
+	prompt,
+	variables,
+	blockCategory,
+	country,
+	language,
+	createdPages,
+) {
+	const variablesDescription = variables
+		.map((v) => `- ${v.name} (type: ${v.type}, required: ${v.required})`)
+		.join('\n');
+	const systemPrompt = `
+You are a content AND visual style generator for website blocks.
+
+STRICT LOCALIZATION & CONTEXT RULES:
+- Language: ${language} (Generate ALL text content, including link labels, in this language)
+- Country: ${country} (Adapt terminology, currency, and cultural context)
+- MANDATORY PAGES ARRAY: [${createdPages.join(', ')}]
+
+Your task:
+- Generate content variables for the block type: ${blockCategory}
+
 =====================
-SEO & LOCALIZATION
+STRICT NAV GENERATION RULES
 =====================
-You MUST generate a "meta" object. 
-- Use local SEO practices for ${country}.
-- Include relevant keywords that people in ${country} would use for this industry.
-- Format any prices/currencies according to ${country} standards (e.g., $100 for USA, 100 € for Germany, etc.).
+For "nav" type variables, follow these ABSOLUTE constraints:
+
+1. EMPTY ARRAY RULE: 
+   - If the "MANDATORY PAGES ARRAY" is empty, the "value" for links MUST be an empty string: "".
+   - DO NOT invent pages. Only use what is provided in the array.
+
+2. SPECIAL CASE - MAIN PAGE:
+   - If a page name is exactly "Main Page" or "Home", the href MUST be "./index.html".
+   - Example: <a href="./index.html" class="header-1-link">Main Page</a>
+
+3. ALL OTHER PAGES:
+   - Convert the name to lowerCamelCase and add ".html".
+   - Example: "About Us" -> "./aboutUs.html", "Contact Us" -> "./contactUs.html".
+
+4. FORMATTING:
+   - Generate EXACTLY one <a> tag for each element in the array [${createdPages.join(', ')}].
+   - Tag template: <a href="[URL]" class="header-1-link">[Translated Name]</a>
+
+=====================
+CONTENT VARIABLES RULES
+=====================
+Fill the variables based on these types:
+
+1. "text" type:
+   {"variableName": {"value": "Translated text content"}}
+
+2. "image" type:
+   {"variableName": {"value": null, "src": "descriptive image description", "alt": "alt text"}}
+
+3. "link" type:
+   {"variableName": {"value": null, "href": "url or #anchor", "label": "link text"}}
+
+4. "nav" type:
+   - For this type, you must generate a collection of HTML anchor tags based on the provided "Available Pages" list.
+   - Structure: {"variableName": {"links": {"value": "HTML_STRING"}}}
+   - Link Format: <a href="./camelCaseName.html" class="header-1-link">Page Name</a>
+   - URL Generation Rule: Convert the page name to lowerCamelCase (e.g., "About Us" becomes "aboutUs", "Contact Us" becomes "contactUs") and add ".html" extension.
+   - Requirement: Generate exactly ONE link for EVERY page provided in the list: ${createdPages.join(', ')}.
+
+=====================
+VARIABLES TO FILL
+=====================
+${variablesDescription}
+
+RESPONSE FORMAT:
+Return ONLY valid JSON.
+CRITICAL: Do NOT include any comments (// or /* */).
+All text values must be in ${language}.
+
+Example for "nav" type:
+{
+  "mainMenu": {
+    "links": {
+      "value": "<a href='./aboutUs.html' class='header-1-link'>About Us</a><a href='./services.html' class='header-1-link'>Services</a>"
+    }
+  }
+}
+
+Return all variables at the ROOT level of the JSON object.
+`;
+
+	const completion = await openai.chat.completions.create({
+		model: 'gpt-4o-mini',
+		messages: [
+			{ role: 'system', content: systemPrompt },
+			{ role: 'user', content: prompt || 'Create professional website content' },
+		],
+		temperature: 0.7,
+	});
+	const content = completion.choices[0].message.content;
+	const jsonMatch = content.match(/\{[\s\S]*\}/);
+	if (!jsonMatch) {
+		throw new Error('AI did not return valid JSON');
+	}
+
+	const result = JSON.parse(jsonMatch[0]);
+
+	for (const varName of Object.keys(result)) {
+		const variable = variables.find((v) => v.name === varName);
+		if (variable?.type === 'image') {
+			const description = result[varName].src || `${blockCategory} ${varName}`;
+			console.log(`Generating image for ${varName}: ${description}`);
+			result[varName].src = await generateImageWithFal(description);
+		}
+	}
+
+	return [
+		result,
+		{
+			promptTokens: completion.usage.prompt_tokens,
+			completionTokens: completion.usage.completion_tokens,
+			totalTokens: completion.usage.total_tokens,
+		},
+	];
+}
+
+export async function generateStyles(prompt) {
+	const systemPrompt = `
+Your task:
+- ALSO generate CSS design tokens based on the user's prompt
 
 =====================
 DESIGN VARIABLES (CSS)
@@ -136,24 +343,12 @@ RESPONSE FORMAT:
 
 Return ONLY valid JSON.
 CRITICAL: Do NOT include any comments (like // or /* */) inside the JSON code.
-All text values must be in ${language}.
 
-1. All content variables MUST be returned at the ROOT level
-2. Design tokens MUST be returned inside a "theme" object
+1. Design tokens MUST be returned inside a "theme" object
 
 Example:
 
 {
-  "meta": {
-    "title": "SEO title for ${country}",
-    "description": "SEO description",
-    "keywords": "keyword1, keyword2, local-keyword",
-    "og_locale": "appropriate locale code for ${country}"
-  },
-  "title": { "value": "..." },
-  "subtitle": { "value": "..." },
-  "ctaButton": { "label": "...", "href": "#", "value": null },
-
   "theme": {
     "--color-primary": "#xxxxxx",
     "--color-accent": "#xxxxxx"
@@ -169,7 +364,7 @@ Examples:
 - Luxury brand → dark backgrounds, gold accents
 - Kids / playful → bright colors, rounded corners
 
-Keep content concise and professional.
+
 `;
 
 	const completion = await openai.chat.completions.create({
@@ -187,15 +382,6 @@ Keep content concise and professional.
 	}
 
 	const result = JSON.parse(jsonMatch[0]);
-
-	for (const varName of Object.keys(result)) {
-		const variable = variables.find((v) => v.name === varName);
-		if (variable?.type === 'image') {
-			const description = result[varName].src || `${blockCategory} ${varName}`;
-			console.log(`Generating image for ${varName}: ${description}`);
-			result[varName].src = await generateImageWithFal(description);
-		}
-	}
 
 	return [
 		result,

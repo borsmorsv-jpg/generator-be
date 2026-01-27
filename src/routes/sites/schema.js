@@ -4,15 +4,10 @@ export const createSiteSchema = {
 	description: 'Create new site',
 	body: {
 		type: 'object',
-		required: ['templatesIds'],
+		required: ['templateId'],
 		properties: {
-			templatesIds: {
-				type: 'array',
-				items: {
-					type: 'number',
-				},
-				minItems: 1,
-				uniqueItems: true,
+			templateId: {
+				type: 'number',
 			},
 			prompt: {
 				type: 'string',
@@ -134,6 +129,38 @@ export const regenerateSiteSchema = {
 			prompt: {
 				type: 'string',
 				maxLength: 5000,
+			},
+		},
+	},
+};
+
+export const regenerateBlockSchema = {
+	tags: ['Sites'],
+	summary: 'Regenerate block',
+	description: 'Regenerate specific block',
+	params: {
+		type: 'object',
+		properties: {
+			siteId: { type: 'integer' },
+		},
+		required: ['siteId'],
+	},
+	body: {
+		type: 'object',
+		required: ['pageName', 'generationBlockId', 'isBlockGlobal'],
+		properties: {
+			prompt: {
+				type: 'string',
+				maxLength: 5000,
+			},
+			pageName: {
+				type: 'string',
+			},
+			generationBlockId: {
+				type: 'string',
+			},
+			isBlockGlobal: {
+				type: 'boolean',
 			},
 		},
 	},

@@ -2,16 +2,11 @@
 import AdmZip from 'adm-zip';
 import { randomBytes } from 'crypto';
 import path from 'path';
+import slugify from 'slugify';
+import { supabase } from '../db/connection.js';
 
 // Required files for web template
-const REQUIRED_FILES = [
-	'template.html',
-	'styles.css',
-	// "main.js",
-	'build-preview.js',
-	'preview.html',
-	'definition.json',
-];
+const REQUIRED_FILES = ['index.njk', 'styles.scss', 'definition.json'];
 
 const ALLOWED_EXTENSIONS = ['.zip'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -48,12 +43,7 @@ async function validateFileContent(filename, buffer) {
 	switch (filename) {
 		case 'definition.json':
 			try {
-				const parsed = JSON.parse(content);
-
-				// Validate required fields in definition.json
-				if (!parsed.name || typeof parsed.name !== 'string') {
-					throw new Error('definition.json must contain a "name" field');
-				}
+				JSON.parse(content);
 			} catch (error) {
 				if (error.name === 'SyntaxError') {
 					throw new Error(`File ${filename} contains invalid JSON: ${error.message}`);
@@ -62,7 +52,7 @@ async function validateFileContent(filename, buffer) {
 			}
 			break;
 
-		case 'template.html':
+		case 'index.njk':
 			if (content.trim().length === 0) {
 				throw new Error(`File ${filename} cannot be empty`);
 			}
@@ -73,21 +63,43 @@ async function validateFileContent(filename, buffer) {
 			}
 			break;
 
-		case 'styles.css':
-			if (content.trim().length === 0) {
+		case 'styles.scss':
+			const trimmedContent = content.trim();
+
+			if (trimmedContent.length === 0) {
 				throw new Error(`File ${filename} cannot be empty`);
 			}
-			break;
+			const startsWithId = trimmedContent.startsWith('#_blockId');
+			const endsWithBrace = trimmedContent.endsWith('}');
 
-		case 'preview.html':
-			if (content.trim().length === 0) {
-				// Optional: can be empty
+			if (!startsWithId || !endsWithBrace) {
+				throw new Error(
+					`Style validation error: The ${filename} file must start with #blockId { and end with }`,
+				);
 			}
-			break;
 
-		case 'build-preview.js':
-			if (content.trim().length === 0) {
-				// Optional: can be empty
+			let braceCount = 0;
+			let opened = false;
+			let validEncapsulation = true;
+
+			for (let i = 0; i < trimmedContent.length; i++) {
+				const char = trimmedContent[i];
+				if (char === '{') {
+					braceCount++;
+					opened = true;
+				} else if (char === '}') {
+					braceCount--;
+				}
+				if (opened && braceCount === 0 && i < trimmedContent.length - 1) {
+					validEncapsulation = false;
+					break;
+				}
+			}
+
+			if (!validEncapsulation || braceCount !== 0) {
+				throw new Error(
+					`Style validation error: All styles in ${filename} must be nested INSIDE the #_blockId { ... } selector. Found code outside the main block.`,
+				);
 			}
 			break;
 
@@ -114,9 +126,6 @@ export async function extractAndValidate(buffer) {
 			(requiredFile) => !fileList.includes(requiredFile),
 		);
 
-		console.log('fileList', fileList);
-		console.log('missingFiles', missingFiles);
-
 		if (missingFiles.length > 0) {
 			throw new Error(`Missing required files: ${missingFiles.join(', ')}`);
 		}
@@ -126,7 +135,6 @@ export async function extractAndValidate(buffer) {
 
 		for (const requiredFile of REQUIRED_FILES) {
 			const entry = zipEntries.find((e) => e.entryName === requiredFile);
-			console.log('entry =>', entry);
 			if (entry) {
 				const fileBuffer = entry.getData();
 
@@ -201,32 +209,11 @@ export function parseTemplateDefinition(definitionContent, fallbackName) {
  * Create complete block definition for database
  */
 export async function createBlockDefinition(archiveBuffer, fileData, extractedFiles, name) {
-	const definitionContent = extractedFiles['definition.json'].content;
-	const templateDefinition = parseTemplateDefinition(definitionContent, name);
-
-	const fileStats = getFileStats(extractedFiles);
-
 	return {
 		originalArchive: {
 			filename: fileData.filename,
 			mimeType: fileData.mimetype,
 			size: archiveBuffer.length,
-		},
-		template: templateDefinition,
-		files: {
-			template: fileStats['template.html'],
-			styles: fileStats['styles.css'],
-			// script: fileStats["main.js"],
-			definition: fileStats['definition.json'],
-		},
-		validation: {
-			isValid: true,
-			requiredFiles: REQUIRED_FILES,
-			validatedAt: new Date().toISOString(),
-		},
-		structure: {
-			totalFiles: Object.keys(extractedFiles).length,
-			totalSize: archiveBuffer.length,
 		},
 	};
 }
@@ -243,7 +230,6 @@ export async function quickValidate(buffer) {
 			.map((entry) => entry.entryName);
 
 		const missingFiles = REQUIRED_FILES.filter((file) => {
-			console.log('file ==>', file);
 			return !fileList.includes(file);
 		});
 
@@ -276,9 +262,37 @@ export default {
 	validateArchive,
 	extractAndValidate,
 	generateArchiveName,
-	getFileStats,
-	parseTemplateDefinition,
-	createBlockDefinition,
-	quickValidate,
 	constants: archiveConstants,
+};
+
+export const replaceSiteZipWithNew = async (sitePages, siteName, existingArchiveUrl) => {
+	const zip = new AdmZip();
+	sitePages.forEach((page) => {
+		zip.addFile(page.filename, Buffer.from(page.html, 'utf8'));
+	});
+	const zipBuffer = zip.toBuffer();
+
+	const safeName = slugify(`site-${siteName}-${new Date().getTime()}.zip`, {
+		lower: true,
+		strict: true,
+	});
+
+	const { error: uploadError } = await supabase.storage
+		.from('sites')
+		.upload(safeName, zipBuffer, {
+			contentType: 'application/zip',
+		});
+
+	if (uploadError) {
+		throw uploadError;
+	}
+
+	const { data: urlData } = supabase.storage.from('sites').getPublicUrl(safeName);
+
+	const oldArchiveName = existingArchiveUrl?.split('/').pop();
+	if (oldArchiveName) {
+		await supabase.storage.from('sites').remove([oldArchiveName]);
+	}
+
+	return urlData;
 };
