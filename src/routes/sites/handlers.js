@@ -456,8 +456,7 @@ export const regenerateSite = async (request, reply) => {
 			throw new Error(`Failed to find site with id "${siteId}"`);
 		}
 
-		const { prompt, templateId, isActive, name, trafficSource, country, language } =
-			request.body;
+		const { prompt } = request.body;
 
 		const tokensInfo = {
 			totalPromptTokens: site.promptTokens,
@@ -466,7 +465,7 @@ export const regenerateSite = async (request, reply) => {
 		};
 
 		const template = await db.query.templates.findFirst({
-			where: eq(templates.id, templateId),
+			where: eq(templates.id, site.definition),
 		});
 
 		if (!template) {
@@ -506,8 +505,8 @@ export const regenerateSite = async (request, reply) => {
 			globalBlocks,
 			template?.definition?.pages,
 			prompt,
-			country,
-			language,
+			site.country,
+			site.language,
 		);
 		preparedGlobalBlocks.forEach((b) => {
 			tokensInfo.totalPromptTokens += b.tokens.promptTokens;
@@ -536,7 +535,7 @@ export const regenerateSite = async (request, reply) => {
 						};
 					} else {
 						const block = await getBlockByType(blockDef.type);
-						const preparedBlock = await prepareBlock(block, prompt, country, language);
+						const preparedBlock = await prepareBlock(block, prompt, site.country, site.language);
 
 						tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
 						tokensInfo.totalCompletionTokens += preparedBlock.tokens.completionTokens;
@@ -574,7 +573,7 @@ export const regenerateSite = async (request, reply) => {
 		const outputPrice = tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS.output / 1000000);
 		const totalPrice = inputPrice + outputPrice;
 
-		const sitePages = buildSitePages(pages, globalCss, language, country);
+		const sitePages = buildSitePages(pages, globalCss, site.language, site.country);
 		const siteConfigDetailed = {
 			pages: sitePages?.map((page) => ({
 				title: page.title,
@@ -590,14 +589,7 @@ export const regenerateSite = async (request, reply) => {
 		const [siteData] = await db
 			.update(sites)
 			.set({
-				isDraft: true,
-				name: name,
-				isActive: isActive,
-				trafficSource: trafficSource,
 				archiveUrl: urlData.publicUrl,
-				country: country,
-				language: language,
-				definition: template.id,
 				prompt: prompt,
 				totalTokens: tokensInfo.totalTokens,
 				completionTokens: tokensInfo.totalCompletionTokens,
@@ -606,13 +598,11 @@ export const regenerateSite = async (request, reply) => {
 				inputUsdPrice: cutNumber(inputPrice, 6),
 				outputUsdPrice: cutNumber(outputPrice, 6),
 				totalUsdPrice: cutNumber(totalPrice, 6),
-				createdBy: '67366103-2833-41a8-aea2-10d589a0705c',
 				updatedBy: '67366103-2833-41a8-aea2-10d589a0705c',
 			})
 			.where(eq(sites.id, siteId))
-			.returning();
 
-		return reply.status(201).send({
+		return reply.status(200).send({
 			data: {
 				...siteData,
 				previews: sitePages.map((page) => ({
@@ -659,6 +649,7 @@ export const regenerateSite = async (request, reply) => {
 		// 	success: true,
 		// });
 	} catch (err) {
+		console.log("err", err);
 		reply.status(500).send({
 			error: err.message,
 			success: false,

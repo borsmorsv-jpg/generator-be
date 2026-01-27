@@ -113,8 +113,8 @@ export const activateSiteSchema = {
 
 export const regenerateSiteSchema = {
 	tags: ['Sites'],
-	summary: 'Activate generated site',
-	description: 'Activate generated site',
+	summary: 'Regenerate site',
+	description: 'Regenerate site',
 	params: {
 		type: 'object',
 		properties: {
