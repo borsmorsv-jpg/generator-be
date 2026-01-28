@@ -67,7 +67,7 @@ export const sites = pgTable('sites', {
 	archiveUrl: varchar('archive_url', { length: 1024 }).notNull(),
 	definition: jsonb('definition').notNull(),
 	siteConfigDetailed: jsonb('site_config_detailed').notNull(),
-	prompt: varchar('prompt', { length: 255 }).notNull(),
+	prompt: text('prompt').notNull(),
 	createdBy: uuid('created_by')
 		.notNull()
 		.references(() => profiles.userId),
