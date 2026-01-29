@@ -217,22 +217,51 @@ Return ONLY valid JSON. All text in ${language}.
 };
 
 export const prepareBlock = async (block, prompt, country, language, navigation = null) => {
-	const [aiContent, tokens] = await generateBlockContent(
-		block.definition.variables,
-		block.category,
-		prompt,
-		country,
-		language,
-	);
+	try {
+		if (block.hasError) {
+			throw new Error(block.error)
+		}
+		const [aiContent, tokens] = await generateBlockContent(
+			block.definition.variables,
+			block.category,
+			prompt,
+			country,
+			language,
+		);
 
-	const variables = navigation ? { ...aiContent, navigation } : aiContent;
+		const variables = navigation ? { ...aiContent, navigation } : aiContent;
 
-	return { ...block, variables, tokens };
+		return { ...block, variables, tokens };
+	} catch (error) {
+		return {
+			...block,
+			hasError: true,
+			error: error?.message
+		}
+	}
 };
 
 export const getBlocks = async (blocksList = []) => {
 	const results = await Promise.allSettled(
-		blocksList.map((blockDef) => getBlockByType(blockDef.type)),
+		blocksList.map(async (blockDef) => {
+			const baseBlock = {
+				type: blockDef.type,
+				category: blockDef.type,
+			};
+			try {
+				const block = await getBlockByType(blockDef.type);
+				return {
+					...block,
+					...baseBlock,
+				}
+			} catch (error) {
+				return {
+					...baseBlock,
+					hasError: true,
+					error: error?.message
+				};
+			}
+		}),
 	);
 
 	return results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
@@ -249,35 +278,47 @@ export const prepareGlobalBlocks = async (
 
 	const results = await Promise.allSettled(
 		globalBlocks.map(async (block) => {
-			const needsNavLabels = !navigationLabels && block.definition.variables.navigation;
+			try {
+				if (block.hasError) {
+					throw new Error(block.error)
+				}
 
-			const [aiContent, tokens] = await generateBlockContent(
-				block.definition.variables,
-				block.category,
-				prompt,
-				country,
-				language,
-				needsNavLabels ? templatePages : null,
-			);
+				const needsNavLabels = !navigationLabels && block.definition.variables.navigation;
 
-			if (aiContent.navigationLabels) {
-				navigationLabels = aiContent.navigationLabels;
-				delete aiContent.navigationLabels;
+				const [aiContent, tokens] = await generateBlockContent(
+					block.definition.variables,
+					block.category,
+					prompt,
+					country,
+					language,
+					needsNavLabels ? templatePages : null,
+				);
+
+				if (aiContent.navigationLabels) {
+					navigationLabels = aiContent.navigationLabels;
+					delete aiContent.navigationLabels;
+				}
+
+				const navigation = {
+					type: 'nav',
+					value: templatePages.map((page, index) => ({
+						href: page.path === '/' ? './index.html' : `.${page.path}.html`,
+						label: navigationLabels?.[index] || page.title,
+						active: false,
+					})),
+				};
+
+				const variables = { ...aiContent, navigation };
+				// const html = nunjucks.renderString(block.html, variables);
+
+				return { ...block, variables, tokens };
+			} catch (error) {
+				return {
+					...block,
+					hasError: true,
+					error: error?.message
+				}
 			}
-
-			const navigation = {
-				type: 'nav',
-				value: templatePages.map((page, index) => ({
-					href: page.path === '/' ? './index.html' : `.${page.path}.html`,
-					label: navigationLabels?.[index] || page.title,
-					active: false,
-				})),
-			};
-
-			const variables = { ...aiContent, navigation };
-			// const html = nunjucks.renderString(block.html, variables);
-
-			return { ...block, variables, tokens };
 		}),
 	);
 

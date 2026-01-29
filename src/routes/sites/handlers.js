@@ -43,10 +43,12 @@ export const createSite = async (request, reply) => {
 			totalCompletionTokens: 0,
 			totalTokens: 0,
 		};
+		console.time("STEP THEME")
 		const { theme: generatedTheme, tokens: themeTokens } = await generateTheme(prompt);
 		tokensInfo.totalPromptTokens += themeTokens.promptTokens;
 		tokensInfo.totalCompletionTokens += themeTokens.completionTokens;
 		tokensInfo.totalTokens += themeTokens.totalTokens;
+		console.timeLog("STEP THEME")
 
 		// const seoData = await Promise.all(
 		// 	template.definition.pages.map(async (page) => {
@@ -71,6 +73,7 @@ export const createSite = async (request, reply) => {
 			// ...(template?.definition?.globals?.css || {})
 		};
 
+		console.time("STEP GLOBAL BLOCKS")
 		const globalBlocks = await getBlocks(template?.definition?.globals?.blocks);
 		const preparedGlobalBlocks = await prepareGlobalBlocks(
 			globalBlocks,
@@ -80,12 +83,15 @@ export const createSite = async (request, reply) => {
 			language,
 		);
 		preparedGlobalBlocks.forEach((b) => {
-			tokensInfo.totalPromptTokens += b.tokens.promptTokens;
-			tokensInfo.totalCompletionTokens += b.tokens.completionTokens;
-			tokensInfo.totalTokens += b.tokens.totalTokens;
+			tokensInfo.totalPromptTokens += (b.tokens?.promptTokens ?? 0);
+			tokensInfo.totalCompletionTokens += (b.tokens?.completionTokens ?? 0);
+			tokensInfo.totalTokens += (b.tokens?.totalTokens ?? 0);
 		});
 
 		const globalBlocksMap = new Map(preparedGlobalBlocks.map((b) => [b.category, b]));
+		console.timeEnd("STEP GLOBAL BLOCKS")
+
+		console.time("STEP BLOCKS")
 		const pagesBlocks = flatPageBlocks(template.definition.pages);
 		const generatedBlocks = await Promise.allSettled(
 			pagesBlocks.map(async (blockDef) => {
@@ -107,6 +113,7 @@ export const createSite = async (request, reply) => {
 					} else {
 						const block = await getBlockByType(blockDef.type);
 						const preparedBlock = await prepareBlock(block, prompt, country, language);
+						console.log("preparedBlock", preparedBlock);
 
 						tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
 						tokensInfo.totalCompletionTokens += preparedBlock.tokens.completionTokens;
@@ -128,6 +135,7 @@ export const createSite = async (request, reply) => {
 			}),
 		);
 		const pagesWithBlocks = generatedBlocks.map((blockResult) => blockResult.value);
+		console.log("pagesWithBlocks", pagesWithBlocks);
 		const pages = template.definition.pages.reduce((acc, page, pageIndex) => {
 			const blocks = pagesWithBlocks.filter((block) => block.pageIndex === pageIndex);
 			return [
@@ -140,10 +148,13 @@ export const createSite = async (request, reply) => {
 			];
 		}, []);
 
+		console.timeEnd("STEP BLOCKS")
+
 		const inputPrice = tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS.input / 1000000);
 		const outputPrice = tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS.output / 1000000);
 		const totalPrice = inputPrice + outputPrice;
 
+		console.time("STEP BUILD PAGES")
 		const sitePages = buildSitePages(pages, globalCss, language, country);
 		const siteConfigDetailed = {
 			pages: sitePages?.map((page) => ({
@@ -154,7 +165,10 @@ export const createSite = async (request, reply) => {
 			})),
 			generatedTheme,
 		};
+		console.timeEnd("STEP BUILD PAGES")
 
+
+		console.time("STEP ARCHIVE")
 		const zip = new AdmZip();
 		sitePages.forEach((page) => {
 			zip.addFile(page.filename, Buffer.from(page.html, 'utf8'));
@@ -177,6 +191,8 @@ export const createSite = async (request, reply) => {
 		}
 
 		const { data: urlData } = supabase.storage.from('sites').getPublicUrl(safeName);
+
+		console.timeEnd("STEP ARCHIVE")
 
 		const [siteData] = await db
 			.insert(sites)
