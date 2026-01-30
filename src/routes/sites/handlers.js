@@ -4,7 +4,7 @@ import { and, asc, count, desc, eq, gte, ilike, lte, sql } from 'drizzle-orm';
 import AdmZip from 'adm-zip';
 import { alias } from 'drizzle-orm/pg-core';
 import JSZip from 'jszip';
-import { PRICE_FOR_PROMPTS } from '../../config/constants.js';
+import { PRICE_FOR_PROMPTS_OPENAI } from '../../config/constants.js';
 import slugify from 'slugify';
 import {
 	buildSitePages,
@@ -42,6 +42,7 @@ export const createSite = async (request, reply) => {
 			totalPromptTokens: 0,
 			totalCompletionTokens: 0,
 			totalTokens: 0,
+			totalFalCost: 0,
 		};
 		console.time("STEP THEME")
 		const { theme: generatedTheme, tokens: themeTokens } = await generateTheme(prompt);
@@ -86,6 +87,7 @@ export const createSite = async (request, reply) => {
 			tokensInfo.totalPromptTokens += (b.tokens?.promptTokens ?? 0);
 			tokensInfo.totalCompletionTokens += (b.tokens?.completionTokens ?? 0);
 			tokensInfo.totalTokens += (b.tokens?.totalTokens ?? 0);
+			tokensInfo.totalFalCost += (b.tokens?.totalFalCost ?? 0);
 		});
 
 		const globalBlocksMap = new Map(preparedGlobalBlocks.map((b) => [b.category, b]));
@@ -118,6 +120,7 @@ export const createSite = async (request, reply) => {
 						tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
 						tokensInfo.totalCompletionTokens += preparedBlock.tokens.completionTokens;
 						tokensInfo.totalTokens += preparedBlock.tokens.totalTokens;
+						tokensInfo.totalFalCost += preparedBlock.tokens.totalFalCost;
 
 						return {
 							hasError: false,
@@ -135,7 +138,6 @@ export const createSite = async (request, reply) => {
 			}),
 		);
 		const pagesWithBlocks = generatedBlocks.map((blockResult) => blockResult.value);
-		console.log("pagesWithBlocks", pagesWithBlocks);
 		const pages = template.definition.pages.reduce((acc, page, pageIndex) => {
 			const blocks = pagesWithBlocks.filter((block) => block.pageIndex === pageIndex);
 			return [
@@ -150,8 +152,8 @@ export const createSite = async (request, reply) => {
 
 		console.timeEnd("STEP BLOCKS")
 
-		const inputPrice = tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS.input / 1000000);
-		const outputPrice = tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS.output / 1000000);
+		const inputPrice = tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS_OPENAI.input / 1000000);
+		const outputPrice = tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS_OPENAI.output / 1000000);
 		const totalPrice = inputPrice + outputPrice;
 
 		console.time("STEP BUILD PAGES")
@@ -206,6 +208,7 @@ export const createSite = async (request, reply) => {
 				language: language,
 				definition: template.id,
 				prompt: prompt,
+				totalFalPrice: tokensInfo.totalFalCost,
 				totalTokens: tokensInfo.totalTokens,
 				completionTokens: tokensInfo.totalCompletionTokens,
 				siteConfigDetailed: siteConfigDetailed,
@@ -317,6 +320,10 @@ export const getAllSites = async (request, reply) => {
 				updatedAt: sites.updatedAt,
 				promptTokens: sites.promptTokens,
 				completionTokens: sites.completionTokens,
+				totalFalPrice: sites.totalFalPrice,
+				language: sites.language,
+				trafficSource: sites.trafficSource,
+				country: sites.country,
 				totalTokens: sites.totalTokens,
 				totalUsdPrice: sites.totalUsdPrice,
 				inputUsdPrice: sites.inputUsdPrice,
@@ -478,6 +485,7 @@ export const regenerateSite = async (request, reply) => {
 			totalPromptTokens: site.promptTokens,
 			totalCompletionTokens: site.completionTokens,
 			totalTokens: site.totalTokens,
+			totalFalCost: site.totalFalCost,
 		};
 
 		const template = await db.query.templates.findFirst({
@@ -524,10 +532,12 @@ export const regenerateSite = async (request, reply) => {
 			site.country,
 			site.language,
 		);
+
 		preparedGlobalBlocks.forEach((b) => {
 			tokensInfo.totalPromptTokens += b.tokens.promptTokens;
 			tokensInfo.totalCompletionTokens += b.tokens.completionTokens;
 			tokensInfo.totalTokens += b.tokens.totalTokens;
+			tokensInfo.totalFalCost += b.tokens?.totalFalCost;
 		});
 
 		const globalBlocksMap = new Map(preparedGlobalBlocks.map((b) => [b.category, b]));
@@ -556,6 +566,7 @@ export const regenerateSite = async (request, reply) => {
 						tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
 						tokensInfo.totalCompletionTokens += preparedBlock.tokens.completionTokens;
 						tokensInfo.totalTokens += preparedBlock.tokens.totalTokens;
+						tokensInfo.totalFalCost += preparedBlock.tokens.totalFalCost;
 
 						return {
 							hasError: false,
@@ -585,8 +596,8 @@ export const regenerateSite = async (request, reply) => {
 			];
 		}, []);
 
-		const inputPrice = tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS.input / 1000000);
-		const outputPrice = tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS.output / 1000000);
+		const inputPrice = tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS_OPENAI.input / 1000000);
+		const outputPrice = tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS_OPENAI.output / 1000000);
 		const totalPrice = inputPrice + outputPrice;
 
 		const sitePages = buildSitePages(pages, globalCss, site.language, site.country);
@@ -613,6 +624,7 @@ export const regenerateSite = async (request, reply) => {
 				completionTokens: tokensInfo.totalCompletionTokens,
 				siteConfigDetailed: siteConfigDetailed,
 				promptTokens: tokensInfo.totalPromptTokens,
+				totalFalPrice: tokensInfo.totalFalPrice,
 				inputUsdPrice: cutNumber(inputPrice, 6),
 				outputUsdPrice: cutNumber(outputPrice, 6),
 				totalUsdPrice: cutNumber(totalPrice, 6),
@@ -699,6 +711,7 @@ export const regenerateBlock = async (request, reply) => {
 			totalPromptTokens: site.promptTokens,
 			totalCompletionTokens: site.completionTokens,
 			totalTokens: site.totalTokens,
+			totalFalCost: site.totalFalCost,
 		};
 
 		let generatedBlock;
@@ -715,6 +728,7 @@ export const regenerateBlock = async (request, reply) => {
 			tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
 			tokensInfo.totalCompletionTokens += preparedBlock.tokens.completionTokens;
 			tokensInfo.totalTokens += preparedBlock.tokens.totalTokens;
+			tokensInfo.totalFalCost += preparedBlock.tokens.totalFalCost;
 			generatedBlock = preparedBlock;
 		} else {
 			const preparedBlock = await prepareBlock(
@@ -727,6 +741,7 @@ export const regenerateBlock = async (request, reply) => {
 			tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
 			tokensInfo.totalCompletionTokens += preparedBlock.tokens.completionTokens;
 			tokensInfo.totalTokens += preparedBlock.tokens.totalTokens;
+			tokensInfo.totalFalCost += preparedBlock.tokens.totalFalCost;
 
 			generatedBlock = preparedBlock;
 		}
@@ -778,8 +793,8 @@ export const regenerateBlock = async (request, reply) => {
 			})),
 			generatedTheme: site.siteConfigDetailed.generatedTheme,
 		};
-		const inputPrice = tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS.input / 1000000);
-		const outputPrice = tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS.output / 1000000);
+		const inputPrice = tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS_OPENAI.input / 1000000);
+		const outputPrice = tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS_OPENAI.output / 1000000);
 		const totalPrice = inputPrice + outputPrice;
 
 		const [siteData] = await db
@@ -789,6 +804,7 @@ export const regenerateBlock = async (request, reply) => {
 				totalTokens: tokensInfo.totalTokens,
 				completionTokens: tokensInfo.totalCompletionTokens,
 				promptTokens: tokensInfo.totalPromptTokens,
+				totalFalPrice: tokensInfo.totalFalCost,
 				inputUsdPrice: cutNumber(inputPrice, 6),
 				outputUsdPrice: cutNumber(outputPrice, 6),
 				totalUsdPrice: cutNumber(totalPrice, 6),

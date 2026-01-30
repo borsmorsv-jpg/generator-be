@@ -82,6 +82,7 @@ export const sites = pgTable('sites', {
 	inputUsdPrice: decimal('input_usd_price'),
 	outputUsdPrice: decimal('output_usd_price'),
 	totalUsdPrice: decimal('total_usd_price'),
+	totalFalPrice: decimal('total_fal_price'),
 });
 
 export const prompts = pgTable('prompts', {
