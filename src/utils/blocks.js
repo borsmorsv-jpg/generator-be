@@ -216,7 +216,7 @@ Return ONLY valid JSON. All text in ${language}.
 	}
 
 	let result = JSON.parse(jsonMatch[0]);
-	const { totalFalCost, ...updatedContent } = await processImages(result, variables);
+	const { totalFalCost, content: updatedContent } = await processImages(result, variables);
 	result = updatedContent;
 
 	return [
@@ -242,6 +242,8 @@ export const prepareBlock = async (block, prompt, country, language, navigation 
 			country,
 			language,
 		);
+
+		console.log("aiContent", aiContent);
 
 		const variables = navigation ? { ...aiContent, navigation } : aiContent;
 
@@ -323,6 +325,7 @@ export const prepareGlobalBlocks = async (
 				};
 
 				const variables = { ...aiContent, navigation };
+				console.log("aiContent", aiContent);
 				// const html = nunjucks.renderString(block.html, variables);
 
 				return { ...block, variables, tokens };

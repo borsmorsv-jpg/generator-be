@@ -15,9 +15,6 @@ import {
 	prepareBlock,
 	prepareGlobalBlocks,
 } from '../../utils/blocks.js';
-import nunjucks from 'nunjucks';
-import * as sass from 'sass';
-import scss from 'nunjucks/browser/nunjucks-slim.js';
 import { replaceSiteZipWithNew } from '../../utils/archiveProcessor.js';
 
 function cutNumber(number, amountAfterDot) {
