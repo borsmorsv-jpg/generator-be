@@ -8,7 +8,7 @@ import * as sass from 'sass';
 import nunjucks from 'nunjucks';
 import fs from 'fs/promises';
 import path from 'path';
-import {PRICE_FOR_PROMPTS_FALAI} from "../config/constants.js";
+import { PRICE_FOR_PROMPTS_FALAI } from '../config/constants.js';
 
 const openai = new OpenAI({
 	apiKey: process.env.OPEN_AI_KEY,
@@ -233,7 +233,7 @@ Return ONLY valid JSON. All text in ${language}.
 export const prepareBlock = async (block, prompt, country, language, navigation = null) => {
 	try {
 		if (block.hasError) {
-			throw new Error(block.error)
+			throw new Error(block.error);
 		}
 		const [aiContent, tokens] = await generateBlockContent(
 			block.definition.variables,
@@ -243,7 +243,7 @@ export const prepareBlock = async (block, prompt, country, language, navigation 
 			language,
 		);
 
-		console.log("aiContent", aiContent);
+		console.log('aiContent', aiContent);
 
 		const variables = navigation ? { ...aiContent, navigation } : aiContent;
 
@@ -252,8 +252,8 @@ export const prepareBlock = async (block, prompt, country, language, navigation 
 		return {
 			...block,
 			hasError: true,
-			error: error?.message
-		}
+			error: error?.message,
+		};
 	}
 };
 
@@ -269,12 +269,12 @@ export const getBlocks = async (blocksList = []) => {
 				return {
 					...block,
 					...baseBlock,
-				}
+				};
 			} catch (error) {
 				return {
 					...baseBlock,
 					hasError: true,
-					error: error?.message
+					error: error?.message,
 				};
 			}
 		}),
@@ -296,7 +296,7 @@ export const prepareGlobalBlocks = async (
 		globalBlocks.map(async (block) => {
 			try {
 				if (block.hasError) {
-					throw new Error(block.error)
+					throw new Error(block.error);
 				}
 
 				const needsNavLabels = !navigationLabels && block.definition.variables.navigation;
@@ -325,7 +325,7 @@ export const prepareGlobalBlocks = async (
 				};
 
 				const variables = { ...aiContent, navigation };
-				console.log("aiContent", aiContent);
+				console.log('aiContent', aiContent);
 				// const html = nunjucks.renderString(block.html, variables);
 
 				return { ...block, variables, tokens };
@@ -333,60 +333,13 @@ export const prepareGlobalBlocks = async (
 				return {
 					...block,
 					hasError: true,
-					error: error?.message
-				}
+					error: error?.message,
+				};
 			}
 		}),
 	);
 
 	return results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
-};
-
-// ==================== SEO ====================
-
-export const generatePageSeo = async (pageTitle, prompt, language, country) => {
-	const systemPrompt = `
-You are an SEO expert. Generate meta tags for a webpage.
-
-RULES:
-- Language: ${language}
-- Country: ${country}
-- Page: ${pageTitle}
-
-Return JSON:
-{
-    "title": "SEO optimized title (50-60 chars)",
-    "description": "Meta description (150-160 chars)",
-    "keywords": "keyword1, keyword2, keyword3"
-}
-
-All text in ${language}. Return ONLY valid JSON.
-`;
-
-	const completion = await openai.chat.completions.create({
-		model: 'gpt-5-mini',
-		messages: [
-			{ role: 'system', content: systemPrompt },
-			{ role: 'user', content: prompt || 'Create SEO for website' },
-		],
-		temperature: 1,
-	});
-
-	const content = completion.choices[0].message.content;
-	const jsonMatch = content.match(/\{[\s\S]*\}/);
-
-	const seo = jsonMatch
-		? JSON.parse(jsonMatch[0])
-		: { title: pageTitle, description: '', keywords: '' };
-
-	return [
-		seo,
-		{
-			promptTokens: completion.usage.prompt_tokens,
-			completionTokens: completion.usage.completion_tokens,
-			totalTokens: completion.usage.total_tokens,
-		},
-	];
 };
 
 const scopeCss = (scss, blockId) => {
@@ -421,7 +374,7 @@ const scopeHtml = (block, blockId) => {
 	}
 };
 
-export const buildPageHtml = (page, globalCss, language, country) => {
+export const buildPageHtml = (page, globalCss, language, country, seo = {}) => {
 	const filledBlocks = page.blocks.map((block, blockIndex) => {
 		const id = `${block.blockType}-${blockIndex}`;
 		return {
@@ -446,20 +399,18 @@ export const buildPageHtml = (page, globalCss, language, country) => {
     <meta name="geo.placename" content="${country.toUpperCase()}">
     <meta name="content-language" content="${language}">
     
-    <title>${page.title}</title>
-    <meta name="description" content="${page?.seo?.description || ''}">
-    <meta name="keywords" content="${page?.seo?.keywords || ''}">
+    <title>${seo.title || page.title}</title>
+    <meta name="description" content="${seo.description || ''}">
+    <meta name="keywords" content="${seo.keywords || ''}">
     
-    <!-- Open Graph -->
-    <meta property="og:title" content="${page?.seo?.title}">
-    <meta property="og:description" content="${page?.seo?.description || ''}">
+    <meta property="og:title" content="${seo.ogTitle || seo.title || page.title}">
+    <meta property="og:description" content="${seo.ogDescription || seo.description || ''}">
     <meta property="og:type" content="website">
     <meta property="og:locale" content="${language}_${country.toUpperCase()}">
     
-    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="${page?.seo?.title}">
-    <meta name="twitter:description" content="${page.seo?.description || ''}">
+    <meta name="twitter:title" content="${seo.ogTitle || seo.title || page.title}">
+    <meta name="twitter:description" content="${seo.ogDescription || seo.description || ''}">
     
     <style>
         :root {
@@ -488,8 +439,9 @@ export const buildPageHtml = (page, globalCss, language, country) => {
 </html>`;
 };
 
-export const buildSitePages = (pages, globalCss, language, country) => {
-	return pages.map((page) => {
+export const buildSitePages = (pages, globalCss, language, country, seoPages) => {
+	return pages.map((page, pageIndex) => {
+		const seo = seoPages[pageIndex];
 		const pageHasErrors = page?.blocks?.some((block) => block.hasError);
 		const blocks = page?.blocks?.map((block, blockIndex) => {
 			return {
@@ -510,7 +462,7 @@ export const buildSitePages = (pages, globalCss, language, country) => {
 			blocks,
 			pageHasErrors,
 			filename: page.path === '/' ? 'index.html' : `${page.path.replace('/', '')}.html`,
-			html: buildPageHtml(page, globalCss, language, country),
+			html: buildPageHtml(page, globalCss, language, country, seo),
 		};
 	});
 };
@@ -566,8 +518,8 @@ Return only JSON.`;
 	return {
 		theme,
 		tokens: {
-			promptTokens: completion.usage.prompt_tokens,
-			completionTokens: completion.usage.completion_tokens,
+			totalPromptTokens: completion.usage.prompt_tokens,
+			totalCompletionTokens: completion.usage.completion_tokens,
 			totalTokens: completion.usage.total_tokens,
 		},
 	};
@@ -585,14 +537,74 @@ export const flatPageBlocks = (pages) => {
 	}, []);
 };
 
-export const flatPageBlocks1 = (pages) => {
-	return pages.reduce((flatBlocks, page, pageIndex) => {
-		const pageBlocks = (page?.layout ?? []).map((blockDef, blockIndex) => ({
-			blockIndex: blockIndex,
-			pageIndex: pageIndex,
-			...blockDef,
+export const generateAllPagesSeo = async (pages, prompt, language, country) => {
+	const systemPrompt = `Generate SEO attributes for multiple website pages.
+
+Language: ${language}
+Country: ${country}
+Pages: ${pages.map((p) => p.title).join(', ')}
+
+Return JSON array where each object has:
+{
+    "title": "SEO Title (50-60 chars)",
+    "description": "Meta description (150-160 chars)",
+    "keywords": "keyword1, keyword2, keyword3",
+    "ogTitle": "Title for social media",
+    "ogDescription": "Description for social media",
+}
+
+Return format:
+{
+    "pages": [
+        { "title": "Page1 SEO", "description": "...", ... },
+        { "title": "Page2 SEO", "description": "...", ... }
+    ]
+}`;
+
+	try {
+		const completion = await openai.chat.completions.create({
+			model: 'gpt-5-mini',
+			messages: [
+				{ role: 'system', content: systemPrompt },
+				{
+					role: 'user',
+					content: `Pages: ${pages.map((p) => p.title).join('\n')}\n\nPrompt: ${prompt}`,
+				},
+			],
+			temperature: 1,
+			response_format: { type: 'json_object' },
+		});
+
+		const result = JSON.parse(completion.choices[0].message.content);
+
+		const seoResults = pages.map((page, index) => ({
+			pageTitle: page.title,
+			...(result.pages[index] || {
+				title: page.title,
+				description: `${page.title} services in ${country}`,
+				keywords: `${page.title}, ${country}`,
+				ogTitle: page.title,
+				ogDescription: `${page.title} in ${country}`,
+			}),
 		}));
 
-		return [...flatBlocks, ...pageBlocks];
-	}, []);
+		return [
+			seoResults,
+			{
+				totalPromptTokens: completion.usage.prompt_tokens,
+				totalCompletionTokens: completion.usage.completion_tokens,
+				totalTokens: completion.usage.total_tokens,
+			},
+		];
+	} catch (error) {
+		const fallbackSeo = pages.map((page) => ({
+			title: `${page.title} | ${country}`,
+			description: `${page.title} services in ${country}`,
+			keywords: `${page.title.toLowerCase().replace(/\s+/g, ', ')}, ${country}`,
+			ogTitle: page.title,
+			ogDescription: `${page.title} in ${country}`,
+		}));
+
+		return [fallbackSeo, { totalPromptTokens: 0, totalCompletionTokens: 0, totalTokens: 0 }];
+	}
 };

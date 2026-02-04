@@ -9,6 +9,9 @@ export const createSiteSchema = {
 			templateId: {
 				type: 'number',
 			},
+			domain: {
+				type: 'string',
+			},
 			prompt: {
 				type: 'string',
 				maxLength: 5000,

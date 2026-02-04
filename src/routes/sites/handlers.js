@@ -8,14 +8,12 @@ import { PRICE_FOR_PROMPTS_OPENAI } from '../../config/constants.js';
 import slugify from 'slugify';
 import {
 	buildSitePages,
-	flatPageBlocks,
-	generateTheme,
 	getBlockByType,
-	getBlocks,
 	prepareBlock,
 	prepareGlobalBlocks,
 } from '../../utils/blocks.js';
 import { replaceSiteZipWithNew } from '../../utils/archiveProcessor.js';
+import { generateSite, generateSitemapXml } from '../../utils/generator.js';
 
 function cutNumber(number, amountAfterDot) {
 	const factor = 10 ** amountAfterDot;
@@ -24,7 +22,7 @@ function cutNumber(number, amountAfterDot) {
 
 export const createSite = async (request, reply) => {
 	try {
-		const { prompt, templateId, isActive, name, trafficSource, country, language } =
+		const { prompt, templateId, isActive, name, trafficSource, country, language, domain } =
 			request.body;
 
 		const template = await db.query.templates.findFirst({
@@ -35,143 +33,32 @@ export const createSite = async (request, reply) => {
 			return reply.status(404).send({ error: 'Template not found' });
 		}
 
-		const tokensInfo = {
+		const currentTokens = {
 			totalPromptTokens: 0,
 			totalCompletionTokens: 0,
 			totalTokens: 0,
 			totalFalCost: 0,
 		};
-		console.time("STEP THEME")
-		const { theme: generatedTheme, tokens: themeTokens } = await generateTheme(prompt);
-		tokensInfo.totalPromptTokens += themeTokens.promptTokens;
-		tokensInfo.totalCompletionTokens += themeTokens.completionTokens;
-		tokensInfo.totalTokens += themeTokens.totalTokens;
-		console.timeLog("STEP THEME")
 
-		// const seoData = await Promise.all(
-		// 	template.definition.pages.map(async (page) => {
-		// 		try {
-		// 			const [seo, tokens] = await generatePageSeo(
-		// 				page.title,
-		// 				prompt,
-		// 				language,
-		// 				country,
-		// 			);
-		// 			tokensInfo.totalPromptTokens += tokens.promptTokens;
-		// 			tokensInfo.totalCompletionTokens += tokens.completionTokens;
-		// 			tokensInfo.totalTokens += tokens.totalTokens;
-		// 			return seo;
-		// 		} catch (err) {
-		// 			return err;
-		// 		}
-		// 	}),
-		// );
-		const globalCss = {
-			...generatedTheme,
-			// ...(template?.definition?.globals?.css || {})
-		};
-
-		console.time("STEP GLOBAL BLOCKS")
-		const globalBlocks = await getBlocks(template?.definition?.globals?.blocks);
-		const preparedGlobalBlocks = await prepareGlobalBlocks(
-			globalBlocks,
-			template?.definition?.pages,
+		const { tokens, siteConfig, sitePages, siteConfigDetailed, previews } = await generateSite({
+			currentTokens,
+			template,
 			prompt,
 			country,
 			language,
-		);
-		preparedGlobalBlocks.forEach((b) => {
-			tokensInfo.totalPromptTokens += (b.tokens?.promptTokens ?? 0);
-			tokensInfo.totalCompletionTokens += (b.tokens?.completionTokens ?? 0);
-			tokensInfo.totalTokens += (b.tokens?.totalTokens ?? 0);
-			tokensInfo.totalFalCost += (b.tokens?.totalFalCost ?? 0);
 		});
 
-		const globalBlocksMap = new Map(preparedGlobalBlocks.map((b) => [b.category, b]));
-		console.timeEnd("STEP GLOBAL BLOCKS")
+		let tempDomain = 'http://localhost:3000';
+		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, tempDomain);
 
-		console.time("STEP BLOCKS")
-		const pagesBlocks = flatPageBlocks(template.definition.pages);
-		const generatedBlocks = await Promise.allSettled(
-			pagesBlocks.map(async (blockDef) => {
-				const isGlobal = globalBlocksMap.has(blockDef.type);
-				const baseInfo = {
-					pageIndex: blockDef.pageIndex,
-					blockType: blockDef.type,
-					isGlobal,
-					hasError: false,
-				};
-
-				try {
-					if (isGlobal) {
-						const block = globalBlocksMap.get(blockDef.type);
-						return {
-							...baseInfo,
-							...block,
-						};
-					} else {
-						const block = await getBlockByType(blockDef.type);
-						const preparedBlock = await prepareBlock(block, prompt, country, language);
-						console.log("preparedBlock", preparedBlock);
-
-						tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
-						tokensInfo.totalCompletionTokens += preparedBlock.tokens.completionTokens;
-						tokensInfo.totalTokens += preparedBlock.tokens.totalTokens;
-						tokensInfo.totalFalCost += preparedBlock.tokens.totalFalCost;
-
-						return {
-							hasError: false,
-							...baseInfo,
-							...preparedBlock,
-						};
-					}
-				} catch (error) {
-					return {
-						...baseInfo,
-						error: error.message,
-						hasError: true,
-					};
-				}
-			}),
-		);
-		const pagesWithBlocks = generatedBlocks.map((blockResult) => blockResult.value);
-		const pages = template.definition.pages.reduce((acc, page, pageIndex) => {
-			const blocks = pagesWithBlocks.filter((block) => block.pageIndex === pageIndex);
-			return [
-				...acc,
-				{
-					...page,
-					blocks,
-					// seo: seoData[pageIndex],
-				},
-			];
-		}, []);
-
-		console.timeEnd("STEP BLOCKS")
-
-		const inputPrice = tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS_OPENAI.input / 1000000);
-		const outputPrice = tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS_OPENAI.output / 1000000);
-		const totalPrice = inputPrice + outputPrice;
-
-		console.time("STEP BUILD PAGES")
-		const sitePages = buildSitePages(pages, globalCss, language, country);
-		const siteConfigDetailed = {
-			pages: sitePages?.map((page) => ({
-				title: page.title,
-				path: page.path,
-				filename: page.filename,
-				blocks: page.blocks,
-			})),
-			generatedTheme,
-		};
-		console.timeEnd("STEP BUILD PAGES")
-
-
-		console.time("STEP ARCHIVE")
 		const zip = new AdmZip();
 		sitePages.forEach((page) => {
 			zip.addFile(page.filename, Buffer.from(page.html, 'utf8'));
 		});
+
+		if (!sitemapError) {
+			zip.addFile('sitemap.xml', Buffer.from(siteMapBody, 'utf8'));
+		}
 
 		const zipBuffer = zip.toBuffer();
 		const safeName = slugify(`site-${name}-${new Date().getTime()}.zip`, {
@@ -191,8 +78,6 @@ export const createSite = async (request, reply) => {
 
 		const { data: urlData } = supabase.storage.from('sites').getPublicUrl(safeName);
 
-		console.timeEnd("STEP ARCHIVE")
-
 		const [siteData] = await db
 			.insert(sites)
 			.values({
@@ -205,14 +90,14 @@ export const createSite = async (request, reply) => {
 				language: language,
 				definition: template.id,
 				prompt: prompt,
-				totalFalPrice: tokensInfo.totalFalCost,
-				totalTokens: tokensInfo.totalTokens,
-				completionTokens: tokensInfo.totalCompletionTokens,
+				totalFalPrice: tokens.totalFalCost,
+				totalTokens: tokens.totalTokens,
+				completionTokens: tokens.totalCompletionTokens,
 				siteConfigDetailed: siteConfigDetailed,
-				promptTokens: tokensInfo.totalPromptTokens,
-				inputUsdPrice: cutNumber(inputPrice, 6),
-				outputUsdPrice: cutNumber(outputPrice, 6),
-				totalUsdPrice: cutNumber(totalPrice, 6),
+				promptTokens: tokens.totalPromptTokens,
+				inputUsdPrice: cutNumber(tokens.openAiInputPrice, 6),
+				outputUsdPrice: cutNumber(tokens.openAiOutputPrice, 6),
+				totalUsdPrice: cutNumber(tokens.openAiTotalPrice, 6),
 				createdBy: '67366103-2833-41a8-aea2-10d589a0705c',
 				updatedBy: '67366103-2833-41a8-aea2-10d589a0705c',
 			})
@@ -221,26 +106,14 @@ export const createSite = async (request, reply) => {
 		return reply.status(201).send({
 			data: {
 				...siteData,
-				previews: sitePages.map((page) => ({
-					html: page.html,
-					filename: page.filename,
-					hasErrors: page.pageHasErrors,
-				})),
-				siteConfig: siteConfigDetailed?.pages?.map((page) => ({
-					...page,
-					blocks: page?.blocks?.map((block) => ({
-						blockId: block.blockId,
-						isGlobal: block.isGlobal,
-						blockType: block.blockType,
-						generationBlockId: block.generationBlockId,
-						hasError: block.hasError,
-					})),
-				})),
+				previews,
+				siteConfig,
 				siteConfigDetailed,
 			},
 			success: true,
 		});
 	} catch (error) {
+		console.log('error', error);
 		return reply.status(500).send({ error: error.message });
 	}
 };
@@ -478,7 +351,7 @@ export const regenerateSite = async (request, reply) => {
 
 		const { prompt } = request.body;
 
-		const tokensInfo = {
+		const currentTokens = {
 			totalPromptTokens: site.promptTokens,
 			totalCompletionTokens: site.completionTokens,
 			totalTokens: site.totalTokens,
@@ -493,192 +366,44 @@ export const regenerateSite = async (request, reply) => {
 			return reply.status(404).send({ error: 'Template not found' });
 		}
 
-		const { theme: generatedTheme, tokens: themeTokens } = await generateTheme(prompt);
-		tokensInfo.totalPromptTokens += themeTokens.promptTokens;
-		tokensInfo.totalCompletionTokens += themeTokens.completionTokens;
-		tokensInfo.totalTokens += themeTokens.totalTokens;
-
-		// const seoData = await Promise.all(
-		// 	template.definition.pages.map(async (page) => {
-		// 		try {
-		// 			const [seo, tokens] = await generatePageSeo(
-		// 				page.title,
-		// 				prompt,
-		// 				language,
-		// 				country,
-		// 			);
-		// 			tokensInfo.totalPromptTokens += tokens.promptTokens;
-		// 			tokensInfo.totalCompletionTokens += tokens.completionTokens;
-		// 			tokensInfo.totalTokens += tokens.totalTokens;
-		// 			return seo;
-		// 		} catch (err) {
-		// 			return err;
-		// 		}
-		// 	}),
-		// );
-		const globalCss = {
-			...generatedTheme,
-			// ...(template?.definition?.globals?.css || {})
-		};
-
-		const globalBlocks = await getBlocks(template?.definition?.globals?.blocks);
-		const preparedGlobalBlocks = await prepareGlobalBlocks(
-			globalBlocks,
-			template?.definition?.pages,
+		const { tokens, siteConfig, sitePages, siteConfigDetailed, previews } = await generateSite({
+			currentTokens,
+			template,
 			prompt,
-			site.country,
-			site.language,
-		);
-
-		preparedGlobalBlocks.forEach((b) => {
-			tokensInfo.totalPromptTokens += b.tokens.promptTokens;
-			tokensInfo.totalCompletionTokens += b.tokens.completionTokens;
-			tokensInfo.totalTokens += b.tokens.totalTokens;
-			tokensInfo.totalFalCost += b.tokens?.totalFalCost;
+			country: site.country,
+			language: site.language,
 		});
 
-		const globalBlocksMap = new Map(preparedGlobalBlocks.map((b) => [b.category, b]));
-		const pagesBlocks = flatPageBlocks(template.definition.pages);
-		const generatedBlocks = await Promise.allSettled(
-			pagesBlocks.map(async (blockDef) => {
-				const isGlobal = globalBlocksMap.has(blockDef.type);
-				const baseInfo = {
-					pageIndex: blockDef.pageIndex,
-					blockType: blockDef.type,
-					isGlobal,
-					hasError: false,
-				};
-
-				try {
-					if (isGlobal) {
-						const block = globalBlocksMap.get(blockDef.type);
-						return {
-							...baseInfo,
-							...block,
-						};
-					} else {
-						const block = await getBlockByType(blockDef.type);
-						const preparedBlock = await prepareBlock(block, prompt, site.country, site.language);
-
-						tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
-						tokensInfo.totalCompletionTokens += preparedBlock.tokens.completionTokens;
-						tokensInfo.totalTokens += preparedBlock.tokens.totalTokens;
-						tokensInfo.totalFalCost += preparedBlock.tokens.totalFalCost;
-
-						return {
-							hasError: false,
-							...baseInfo,
-							...preparedBlock,
-						};
-					}
-				} catch (error) {
-					return {
-						...baseInfo,
-						error: error.message,
-						hasError: true,
-					};
-				}
-			}),
-		);
-		const pagesWithBlocks = generatedBlocks.map((blockResult) => blockResult.value);
-		const pages = template.definition.pages.reduce((acc, page, pageIndex) => {
-			const blocks = pagesWithBlocks.filter((block) => block.pageIndex === pageIndex);
-			return [
-				...acc,
-				{
-					...page,
-					blocks,
-					// seo: seoData[pageIndex],
-				},
-			];
-		}, []);
-
-		const inputPrice = tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS_OPENAI.input / 1000000);
-		const outputPrice = tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS_OPENAI.output / 1000000);
-		const totalPrice = inputPrice + outputPrice;
-
-		const sitePages = buildSitePages(pages, globalCss, site.language, site.country);
-		const siteConfigDetailed = {
-			pages: sitePages?.map((page) => ({
-				title: page.title,
-				path: page.path,
-				filename: page.filename,
-				blocks: page.blocks,
-			})),
-			generatedTheme,
-		};
-
 		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl);
-
-		console.log("urlData", urlData);
 
 		const [siteData] = await db
 			.update(sites)
 			.set({
 				archiveUrl: urlData.publicUrl,
 				prompt: prompt,
-				totalTokens: tokensInfo.totalTokens,
-				completionTokens: tokensInfo.totalCompletionTokens,
+				totalTokens: tokens.totalTokens,
+				completionTokens: tokens.totalCompletionTokens,
 				siteConfigDetailed: siteConfigDetailed,
-				promptTokens: tokensInfo.totalPromptTokens,
-				totalFalPrice: tokensInfo.totalFalPrice,
-				inputUsdPrice: cutNumber(inputPrice, 6),
-				outputUsdPrice: cutNumber(outputPrice, 6),
-				totalUsdPrice: cutNumber(totalPrice, 6),
+				promptTokens: tokens.totalPromptTokens,
+				totalFalPrice: tokens.totalFalPrice,
+				inputUsdPrice: cutNumber(tokens.openAiInputPrice, 6),
+				outputUsdPrice: cutNumber(tokens.openAiOutputPrice, 6),
+				totalUsdPrice: cutNumber(tokens.openAiTotalPrice, 6),
 				updatedBy: '67366103-2833-41a8-aea2-10d589a0705c',
 			})
-			.where(eq(sites.id, siteId)).returning();
-
-		console.log("returned siteData", siteData)
+			.where(eq(sites.id, siteId))
+			.returning();
 
 		return reply.status(200).send({
 			data: {
 				...siteData,
-				previews: sitePages.map((page) => ({
-					html: page.html,
-					filename: page.filename,
-					hasErrors: page.pageHasErrors,
-				})),
-				siteConfig: siteConfigDetailed?.pages?.map((page) => ({
-					...page,
-					blocks: page?.blocks?.map((block) => ({
-						blockId: block.blockId,
-						isGlobal: block.isGlobal,
-						blockType: block.blockType,
-						generationBlockId: block.generationBlockId,
-						hasError: block.hasError,
-					})),
-				})),
+				previews,
+				siteConfig,
 				siteConfigDetailed,
 			},
 			success: true,
 		});
-
-		// const [siteData] = await db
-		// 	.update(sites)
-		// 	.set({
-		// 		prompt,
-		// 		archiveUrl: urlData.publicUrl,
-		// 		totalTokens: tokensInfo.totalTokens,
-		// 		completionTokens: tokensInfo.totalCompletionTokens,
-		// 		promptTokens: tokensInfo.totalPromptTokens,
-		// 		inputUsdPrice: cutNumber(inputPrice, 6),
-		// 		outputUsdPrice: cutNumber(outputPrice, 6),
-		// 		totalUsdPrice: cutNumber(totalPrice, 6),
-		// 		updatedAt: new Date(),
-		// 	})
-		// 	.where(eq(sites.id, siteId))
-		// 	.returning();
-		//
-		// return reply.send({
-		// 	data: {
-		// 		...siteData,
-		// 		preview: generatedSite,
-		// 	},
-		// 	success: true,
-		// });
 	} catch (err) {
-		console.log("err", err);
 		reply.status(500).send({
 			error: err.message,
 			success: false,
@@ -790,8 +515,10 @@ export const regenerateBlock = async (request, reply) => {
 			})),
 			generatedTheme: site.siteConfigDetailed.generatedTheme,
 		};
-		const inputPrice = tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS_OPENAI.input / 1000000);
-		const outputPrice = tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS_OPENAI.output / 1000000);
+		const inputPrice =
+			tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS_OPENAI.input / 1000000);
+		const outputPrice =
+			tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS_OPENAI.output / 1000000);
 		const totalPrice = inputPrice + outputPrice;
 
 		const [siteData] = await db
