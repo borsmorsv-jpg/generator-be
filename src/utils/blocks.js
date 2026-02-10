@@ -135,6 +135,7 @@ ${navInstruction}
 =====================
 CONTENT VARIABLES RULES
 =====================
+GENERAL RULES:
 1. TEXT VARIABLES: {"variableName": {"value": "text content"}}
 2. IMAGE VARIABLES: {"variableName": {"href": "detailed image description for AI image generation", "alt": "alt text"}}
 3. LINK VARIABLES: {"variableName": {"value": null, "href": "url", "label": "text"}}
@@ -142,22 +143,14 @@ CONTENT VARIABLES RULES
    For array variables, fill the "values" array with complete objects.
    Each object in the array should contain all its nested fields.
 
-   Example for "cards" array with image, title, description:
-   "cards": {
-     "type": "array",
-     "values": [
-       {
-         "image": {"href": "description for image 1", "alt": "alt text 1"},
-         "title": {"value": "Card Title 1"},
-         "description": {"value": "Card description 1"}
-       },
-       {
-         "image": {"href": "description for image 2", "alt": "alt text 2"},
-         "title": {"value": "Card Title 2"},
-         "description": {"value": "Card description 2"}
-       }
-     ]
-   }
+ARRAY VARIABLES RULES (apply to ALL arrays):
+- Fill the "values" array with complete objects
+- Each object in the array should contain ALL its nested fields
+- For nested fields, follow the same rules:
+  * Text fields: {"fieldName": {"value": "text"}}
+  * Image fields: {"fieldName": {"href": "image description", "alt": "alt text"}}
+  * Link fields: {"fieldName": {"value": null, "href": "url", "label": "text"}}
+  * Array fields: Apply these same rules recursively
 
 VARIABLES TO FILL:
 ${variablesDescription}
@@ -167,34 +160,73 @@ OUTPUT FORMAT
 =====================
 Return a FLAT JSON object where each key is the variable name.
 
-CORRECT FORMAT:
+EXAMPLES:
+
+Example 1: Array named "cards":
 {
-  "tagline": {"value": "Our Services"},
-  "title": {"value": "What We Offer"},
-  "description": {"value": "Comprehensive solutions for your needs"},
   "cards": {
     "type": "array",
     "values": [
       {
         "image": {"href": "modern office design with plants", "alt": "Office design"},
         "title": {"value": "Office Design"},
-        "description": {"value": "Ergonomic workspace solutions"}
+        "description": {"value": "Ergonomic workspace solutions"},
+        "link": {"value": null, "href": "#", "label": "Learn More"}
       },
       {
         "image": {"href": "team collaboration meeting", "alt": "Team meeting"},
         "title": {"value": "Team Collaboration"},
-        "description": {"value": "Spaces for effective teamwork"}
+        "description": {"value": "Spaces for effective teamwork"},
+        "link": {"value": null, "href": "#", "label": "Learn More"}
       }
     ]
-  }${
+  }
+}
+
+Example 2: Array named "products":
+{
+  "products": {
+    "type": "array",
+    "values": [
+      {
+        "productImage": {"href": "modern laptop on desk", "alt": "Laptop product"},
+        "productName": {"value": "Pro Laptop"},
+        "price": {"value": "$999"},
+        "features": {
+          "type": "array",
+          "values": [
+            {"feature": {"value": "16GB RAM"}},
+            {"feature": {"value": "512GB SSD"}},
+            {"feature": {"value": "14-inch Display"}}
+          ]
+        }
+      }
+    ]
+  }
+}
+
+Example 3: Array named "testimonials":
+{
+  "testimonials": {
+    "type": "array",
+    "values": [
+      {
+        "avatar": {"href": "smiling business person", "alt": "Customer avatar"},
+        "name": {"value": "John Smith"},
+        "position": {"value": "CEO at Company"},
+        "quote": {"value": "Excellent service!"}
+      }
+    ]
+  }
+}${
 		templatePages
 			? `,
   "navigationLabels": ["Label 1", "Label 2"]`
 			: ''
-  }
-}
+	}
 
-IMPORTANT: For array items, include ALL required fields from the definition.
+IMPORTANT: Apply array rules to ANY array variable regardless of its name.
+For array items, include ALL required fields from the definition.
 Do NOT use "type" field inside array items unless specified in definition.
 
 Return ONLY valid JSON. All text in ${language}.
