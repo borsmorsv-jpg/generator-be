@@ -12,12 +12,14 @@ import {
 	prepareBlock,
 	prepareGlobalBlocks,
 } from '../../utils/blocks.js';
-import { replaceSiteZipWithNew } from '../../utils/archiveProcessor.js';
+import { filteredZip, replaceSiteZipWithNew } from '../../utils/archiveProcessor.js';
 import { generateSite, generateSitemapXml } from '../../utils/generator.js';
+import Decimal from 'decimal.js';
 
 function cutNumber(number, amountAfterDot) {
-	const factor = 10 ** amountAfterDot;
-	return Math.floor(number * factor) / factor;
+	const safeNumber = number ?? 0;
+	const safePrecision = amountAfterDot ?? 0;
+	return new Decimal(safeNumber).toDecimalPlaces(safePrecision, Decimal.ROUND_DOWN).toNumber();
 }
 
 export const createSite = async (request, reply) => {
@@ -40,18 +42,20 @@ export const createSite = async (request, reply) => {
 			totalFalCost: 0,
 		};
 
+		const zip = new AdmZip();
 		const { tokens, siteConfig, sitePages, siteConfigDetailed, previews } = await generateSite({
 			currentTokens,
 			template,
 			prompt,
 			country,
 			language,
+			zip,
 		});
 
 		let tempDomain = 'http://localhost:3000';
 		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, tempDomain);
 
-		const zip = new AdmZip();
+		// const zip = new AdmZip();
 		sitePages.forEach((page) => {
 			zip.addFile(page.filename, Buffer.from(page.html, 'utf8'));
 		});
@@ -355,7 +359,7 @@ export const regenerateSite = async (request, reply) => {
 			totalPromptTokens: site.promptTokens,
 			totalCompletionTokens: site.completionTokens,
 			totalTokens: site.totalTokens,
-			totalFalCost: site.totalFalCost,
+			totalFalCost: site.totalFalPrice,
 		};
 
 		const template = await db.query.templates.findFirst({
@@ -366,15 +370,27 @@ export const regenerateSite = async (request, reply) => {
 			return reply.status(404).send({ error: 'Template not found' });
 		}
 
+		const zip = new AdmZip();
 		const { tokens, siteConfig, sitePages, siteConfigDetailed, previews } = await generateSite({
 			currentTokens,
 			template,
 			prompt,
 			country: site.country,
 			language: site.language,
+			zip
 		});
 
-		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl);
+		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, site.domain);
+
+		sitePages.forEach((page) => {
+			zip.addFile(page.filename, Buffer.from(page.html, 'utf8'));
+		});
+
+		if (!sitemapError) {
+			zip.addFile('sitemap.xml', Buffer.from(siteMapBody, 'utf8'));
+		}
+
+		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl, zip, siteMapBody, sitemapError);
 
 		const [siteData] = await db
 			.update(sites)
@@ -385,7 +401,7 @@ export const regenerateSite = async (request, reply) => {
 				completionTokens: tokens.totalCompletionTokens,
 				siteConfigDetailed: siteConfigDetailed,
 				promptTokens: tokens.totalPromptTokens,
-				totalFalPrice: tokens.totalFalPrice,
+				totalFalPrice: tokens.totalFalCost,
 				inputUsdPrice: cutNumber(tokens.openAiInputPrice, 6),
 				outputUsdPrice: cutNumber(tokens.openAiOutputPrice, 6),
 				totalUsdPrice: cutNumber(tokens.openAiTotalPrice, 6),
@@ -404,6 +420,7 @@ export const regenerateSite = async (request, reply) => {
 			success: true,
 		});
 	} catch (err) {
+		console.log("err", err)
 		reply.status(500).send({
 			error: err.message,
 			success: false,
@@ -433,10 +450,19 @@ export const regenerateBlock = async (request, reply) => {
 			totalPromptTokens: site.promptTokens,
 			totalCompletionTokens: site.completionTokens,
 			totalTokens: site.totalTokens,
-			totalFalCost: site.totalFalCost,
+			totalFalCost: site.totalFalPrice,
 		};
 
 		let generatedBlock;
+
+		const regeneratingPage = site.siteConfigDetailed?.pages.find(
+			(page) => page.filename === pageName,
+		);
+		const currentSiteZip = await filteredZip(
+			site.archiveUrl,
+			regeneratingPage,
+			generationBlockId,
+		);
 
 		if (isBlockGlobal) {
 			const [preparedBlock] = await prepareGlobalBlocks(
@@ -445,6 +471,7 @@ export const regenerateBlock = async (request, reply) => {
 				site.prompt || prompt,
 				site.country,
 				site.language,
+				currentSiteZip
 			);
 
 			tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
@@ -458,6 +485,8 @@ export const regenerateBlock = async (request, reply) => {
 				site.prompt || prompt,
 				site.country,
 				site.language,
+				null,
+				currentSiteZip
 			);
 
 			tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
@@ -487,7 +516,7 @@ export const regenerateBlock = async (request, reply) => {
 						isGlobal: isBlockGlobal,
 						blockType: generatedBlock.category,
 						blockIndex: blockIndex,
-						// generationBlockId: `${generatedBlock.category}-${blockIndex}`,
+						generationBlockId: `${generatedBlock.category}-${blockIndex}`,
 						definition: generatedBlock.definition,
 						variables: generatedBlock.variables,
 						hasError: false,
@@ -498,13 +527,18 @@ export const regenerateBlock = async (request, reply) => {
 			};
 		});
 
+		// console.log("site.siteConfigDetailed.seoPages", site.siteConfigDetailed.seoPages)
+
 		const sitePages = buildSitePages(
 			updatedPages,
 			site.siteConfigDetailed.generatedTheme,
 			site.language,
 			site.country,
+			// site.siteConfigDetailed.seoPages,
 		);
-		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl);
+
+		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, site.domain);
+		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl, currentSiteZip, siteMapBody, sitemapError);
 
 		const siteConfigDetailed = {
 			pages: sitePages?.map((page) => ({
@@ -514,6 +548,7 @@ export const regenerateBlock = async (request, reply) => {
 				blocks: page.blocks,
 			})),
 			generatedTheme: site.siteConfigDetailed.generatedTheme,
+			// seoPages: site.siteConfigDetailed.seoPages,
 		};
 		const inputPrice =
 			tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS_OPENAI.input / 1000000);
@@ -561,6 +596,7 @@ export const regenerateBlock = async (request, reply) => {
 			success: true,
 		});
 	} catch (err) {
+		console.log("error", err);
 		reply.status(500).send({
 			error: err.message,
 			success: false,

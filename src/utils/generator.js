@@ -1,7 +1,6 @@
 import {
 	buildSitePages,
 	flatPageBlocks,
-	generateAllPagesSeo,
 	generateTheme,
 	getBlockByType,
 	getBlocks,
@@ -10,8 +9,9 @@ import {
 } from './blocks.js';
 import { PRICE_FOR_PROMPTS_OPENAI } from '../config/constants.js';
 import dayjs from 'dayjs';
+import {generatePagesWithAI} from "./pages.js";
 
-export const generateSite = async ({ currentTokens, template, prompt, country, language }) => {
+export const generateSite = async ({ currentTokens, template, prompt, country, language, zip }) => {
 	const tokensInfo = {
 		totalPromptTokens: currentTokens.totalPromptTokens ?? 0,
 		totalCompletionTokens: currentTokens.totalCompletionTokens ?? 0,
@@ -19,16 +19,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 		totalFalCost: currentTokens.totalFalCost ?? 0,
 	};
 
-	const populateSEO = async (pages, prompt, language, country) => {
-		const [seoPages, seoTokens] = await generateAllPagesSeo(pages, prompt, language, country);
-
-		return {
-			seoPages,
-			tokens: seoTokens,
-		};
-	};
-
-	const populatePagesWithContent = async (template) => {
+	const populatePagesWithContent = async (template, pages) => {
 		const tokens = {
 			totalPromptTokens: 0,
 			totalCompletionTokens: 0,
@@ -39,10 +30,11 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 		const globalBlocks = await getBlocks(template?.definition?.globals?.blocks);
 		const preparedGlobalBlocks = await prepareGlobalBlocks(
 			globalBlocks,
-			template?.definition?.pages,
+			pages,
 			prompt,
 			country,
 			language,
+			zip,
 		);
 		preparedGlobalBlocks.forEach((b) => {
 			tokens.totalPromptTokens += b.tokens?.promptTokens ?? 0;
@@ -53,7 +45,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 
 		const globalBlocksMap = new Map(preparedGlobalBlocks.map((b) => [b.category, b]));
 
-		const pagesBlocks = flatPageBlocks(template.definition.pages);
+		const pagesBlocks = flatPageBlocks(pages);
 		const generatedBlocks = await Promise.allSettled(
 			pagesBlocks.map(async (blockDef) => {
 				const isGlobal = globalBlocksMap.has(blockDef.type);
@@ -73,7 +65,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 						};
 					} else {
 						const block = await getBlockByType(blockDef.type);
-						const preparedBlock = await prepareBlock(block, prompt, country, language);
+						const preparedBlock = await prepareBlock(block, prompt, country, language, null, zip);
 
 						tokens.totalPromptTokens += preparedBlock.tokens.promptTokens;
 						tokens.totalCompletionTokens += preparedBlock.tokens.completionTokens;
@@ -96,7 +88,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 			}),
 		);
 		const pagesWithBlocks = generatedBlocks.map((blockResult) => blockResult.value);
-		const populatedPages = template.definition.pages.reduce((acc, page, pageIndex) => {
+		const populatedPages = pages.reduce((acc, page, pageIndex) => {
 			const blocks = pagesWithBlocks.filter((block) => block.pageIndex === pageIndex);
 			return [
 				...acc,
@@ -122,16 +114,21 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 		};
 	};
 
+	const { pages: generatedPages, tokens: seoTokens } = await generatePagesWithAI({
+		prompt,
+		pages: template.definition.pages,
+		country,
+		language
+	});
+
 	const final = await Promise.all([
 		populateTheme(prompt),
-		populatePagesWithContent(template),
-		populateSEO(template.definition.pages, prompt, language, country),
+		populatePagesWithContent(template, generatedPages),
 	]);
 
 	const [
 		{ theme: generatedTheme, tokens: themeTokens },
 		{ pages, tokens: pagesTokens },
-		{ seoPages, tokens: seoTokens },
 	] = final;
 
 	tokensInfo.totalPromptTokens +=
@@ -140,6 +137,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 		themeTokens.totalCompletionTokens +
 		pagesTokens.totalCompletionTokens +
 		seoTokens.totalCompletionTokens;
+
 	tokensInfo.totalTokens +=
 		themeTokens.totalTokens + pagesTokens.totalTokens + seoTokens.totalTokens;
 	tokensInfo.totalFalCost += pagesTokens.totalFalCost;
@@ -155,7 +153,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 		tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS_OPENAI.output / 1000000);
 	const openAiTotalPrice = openAiInputPrice + openAiOutputPrice;
 
-	const sitePages = buildSitePages(pages, globalCss, language, country, seoPages);
+	const sitePages = buildSitePages(pages, globalCss, language, country);
 	const siteConfigDetailed = {
 		pages: sitePages?.map((page) => ({
 			title: page.title,
@@ -163,7 +161,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 			filename: page.filename,
 			blocks: page.blocks,
 		})),
-		generatedTheme,
+		generatedTheme: globalCss,
 	};
 
 	return {
@@ -193,7 +191,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 	};
 };
 
-export const generateSitemapXml = (sitePages, domain) => {
+export const generateSitemapXml = (sitePages, domain = "http://localhost:3000") => {
 	try {
 		let baseUrl;
 
