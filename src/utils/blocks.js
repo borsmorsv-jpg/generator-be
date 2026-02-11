@@ -2,52 +2,83 @@ import { db } from '../db/connection.js';
 import { blocks } from '../db/schema.js';
 import { and, eq, sql } from 'drizzle-orm';
 import { downloadAndUnzipBlock } from './zipHandler.js';
-import OpenAI from 'openai';
-import * as fal from '@fal-ai/serverless-client';
 import * as sass from 'sass';
 import nunjucks from 'nunjucks';
 import fs from 'fs/promises';
 import path from 'path';
-import { PRICE_FOR_PROMPTS_FALAI } from '../config/constants.js';
+import {fal, openai} from "../lib/AiClients.js";
 
-const openai = new OpenAI({
-	apiKey: process.env.OPEN_AI_KEY,
-});
+// const generateImageWithFal = async (prompt) => {
+// 	try {
+// 		const result = await fal.subscribe('fal-ai/flux/schnell', {
+// 			input: {
+// 				prompt: prompt,
+// 				image_size: 'landscape_16_9',
+// 				num_inference_steps: 4,
+// 				num_images: 1,
+// 			},
+// 		});
+// 		const image = result.images[0];
+// 		const megapixels = (image.width * image.height) / 1000000;
+// 		const cost = megapixels * PRICE_FOR_PROMPTS_FALAI.perMegaPixel;
+//
+// 		return { url: image.url, cost: cost };
+// 	} catch (error) {
+// 		return {
+// 			url: `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=800&height=600`,
+// 			cost: 0,
+// 		};
+// 	}
+// };
 
-fal.config({
-	credentials: process.env.FAL_KEY,
-});
-
-const generateImageWithFal = async (prompt) => {
+const generateImageWithFal = async (prompt, zip) => {
 	try {
-		const result = await fal.subscribe('fal-ai/flux/schnell', {
+		const { data } = await fal.run('fal-ai/flux/schnell', {
 			input: {
+				// prompt: `TRANSPARENT PNG LOGO: ${prompt}. Minimalist, vector, solid colors, no background`,
 				prompt: prompt,
-				image_size: 'landscape_16_9',
+				negative_prompt: 'background, text, gradient, shadow, realistic, photo',
+				image_size: 'square_hd',
 				num_inference_steps: 4,
-				num_images: 1,
+				guidance_scale: 3.5,
+				sync_mode: true
 			},
 		});
-		const image = result.images[0];
-		const megapixels = (image.width * image.height) / 1000000;
-		const cost = megapixels * PRICE_FOR_PROMPTS_FALAI.perMegaPixel;
 
-		return { url: image.url, cost: cost };
+		const image = data.images[0];
+		const fileName = `img_${Math.random().toString(36).substring(7)}.png`;
+		const zipPath = `images/${fileName}`;
+
+		const response = await fetch(image.url);
+		const arrayBuffer = await response.arrayBuffer();
+		const buffer = Buffer.from(arrayBuffer);
+
+		zip.addFile(zipPath, buffer);
+
+		const cost = ((image.width * image.height) / 1000000) * 0.0039;
+
+		return {
+			url: zipPath,
+			cost: Number(cost.toFixed(4)),
+			size: `${image.width}x${image.height}`,
+		};
+
 	} catch (error) {
 		return {
-			url: `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=800&height=600`,
+			url: `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&format=png`,
 			cost: 0,
+			error: true
 		};
 	}
 };
 
-const processImages = async (content, variables) => {
+const processImages = async (content, variables, zip) => {
 	let totalFalCost = 0;
 	for (const [key, value] of Object.entries(content)) {
 		const varDef = variables[key];
 
 		if (varDef?.type === 'image' && value?.href && !value.href.startsWith('http')) {
-			const { url, cost } = await generateImageWithFal(value.href);
+			const { url, cost } = await generateImageWithFal(value.href, zip);
 			content[key].href = url;
 			totalFalCost += cost;
 		}
@@ -56,7 +87,7 @@ const processImages = async (content, variables) => {
 			for (const item of value.values) {
 				for (const [itemKey, itemValue] of Object.entries(item)) {
 					if (itemValue?.href && !itemValue.href.startsWith('http')) {
-						const { url, cost } = await generateImageWithFal(itemValue.href);
+						const { url, cost } = await generateImageWithFal(itemValue.href, zip);
 						item[itemKey].href = url;
 						totalFalCost += cost;
 					}
@@ -67,7 +98,6 @@ const processImages = async (content, variables) => {
 	return { content, totalFalCost };
 };
 
-// ==================== БАЗОВЫЕ ОПЕРАЦИИ ====================
 
 export const getBlockByType = async (type) => {
 	const [block] = await db
@@ -97,6 +127,7 @@ export const generateBlockContent = async (
 	country,
 	language,
 	templatePages = null,
+	zip,
 ) => {
 	const filteredVariables = Object.entries(variables).filter(([name, v]) => v.type !== 'nav');
 
@@ -248,7 +279,7 @@ Return ONLY valid JSON. All text in ${language}.
 	}
 
 	let result = JSON.parse(jsonMatch[0]);
-	const { totalFalCost, content: updatedContent } = await processImages(result, variables);
+	const { totalFalCost, content: updatedContent } = await processImages(result, variables, zip);
 	result = updatedContent;
 
 	return [
@@ -262,7 +293,7 @@ Return ONLY valid JSON. All text in ${language}.
 	];
 };
 
-export const prepareBlock = async (block, prompt, country, language, navigation = null) => {
+export const prepareBlock = async (block, prompt, country, language, navigation = null, zip) => {
 	try {
 		if (block.hasError) {
 			throw new Error(block.error);
@@ -273,6 +304,8 @@ export const prepareBlock = async (block, prompt, country, language, navigation 
 			prompt,
 			country,
 			language,
+			null,
+			zip
 		);
 
 		console.log('aiContent', aiContent);
@@ -321,6 +354,7 @@ export const prepareGlobalBlocks = async (
 	prompt,
 	country,
 	language,
+	zip,
 ) => {
 	let navigationLabels = null;
 
@@ -340,6 +374,7 @@ export const prepareGlobalBlocks = async (
 					country,
 					language,
 					needsNavLabels ? templatePages : null,
+					zip,
 				);
 
 				if (aiContent.navigationLabels) {
@@ -471,9 +506,8 @@ export const buildPageHtml = (page, globalCss, language, country, seo = {}) => {
 </html>`;
 };
 
-export const buildSitePages = (pages, globalCss, language, country, seoPages) => {
+export const buildSitePages = (pages, globalCss, language, country) => {
 	return pages.map((page, pageIndex) => {
-		const seo = seoPages[pageIndex];
 		const pageHasErrors = page?.blocks?.some((block) => block.hasError);
 		const blocks = page?.blocks?.map((block, blockIndex) => {
 			return {
@@ -494,7 +528,7 @@ export const buildSitePages = (pages, globalCss, language, country, seoPages) =>
 			blocks,
 			pageHasErrors,
 			filename: page.path === '/' ? 'index.html' : `${page.path.replace('/', '')}.html`,
-			html: buildPageHtml(page, globalCss, language, country, seo),
+			html: buildPageHtml(page, globalCss, language, country, page.seo),
 		};
 	});
 };
@@ -569,74 +603,3 @@ export const flatPageBlocks = (pages) => {
 	}, []);
 };
 
-export const generateAllPagesSeo = async (pages, prompt, language, country) => {
-	const systemPrompt = `Generate SEO attributes for multiple website pages.
-
-Language: ${language}
-Country: ${country}
-Pages: ${pages.map((p) => p.title).join(', ')}
-
-Return JSON array where each object has:
-{
-    "title": "SEO Title (50-60 chars)",
-    "description": "Meta description (150-160 chars)",
-    "keywords": "keyword1, keyword2, keyword3",
-    "ogTitle": "Title for social media",
-    "ogDescription": "Description for social media",
-}
-
-Return format:
-{
-    "pages": [
-        { "title": "Page1 SEO", "description": "...", ... },
-        { "title": "Page2 SEO", "description": "...", ... }
-    ]
-}`;
-
-	try {
-		const completion = await openai.chat.completions.create({
-			model: 'gpt-5-mini',
-			messages: [
-				{ role: 'system', content: systemPrompt },
-				{
-					role: 'user',
-					content: `Pages: ${pages.map((p) => p.title).join('\n')}\n\nPrompt: ${prompt}`,
-				},
-			],
-			temperature: 1,
-			response_format: { type: 'json_object' },
-		});
-
-		const result = JSON.parse(completion.choices[0].message.content);
-
-		const seoResults = pages.map((page, index) => ({
-			pageTitle: page.title,
-			...(result.pages[index] || {
-				title: page.title,
-				description: `${page.title} services in ${country}`,
-				keywords: `${page.title}, ${country}`,
-				ogTitle: page.title,
-				ogDescription: `${page.title} in ${country}`,
-			}),
-		}));
-
-		return [
-			seoResults,
-			{
-				totalPromptTokens: completion.usage.prompt_tokens,
-				totalCompletionTokens: completion.usage.completion_tokens,
-				totalTokens: completion.usage.total_tokens,
-			},
-		];
-	} catch (error) {
-		const fallbackSeo = pages.map((page) => ({
-			title: `${page.title} | ${country}`,
-			description: `${page.title} services in ${country}`,
-			keywords: `${page.title.toLowerCase().replace(/\s+/g, ', ')}, ${country}`,
-			ogTitle: page.title,
-			ogDescription: `${page.title} in ${country}`,
-		}));
-
-		return [fallbackSeo, { totalPromptTokens: 0, totalCompletionTokens: 0, totalTokens: 0 }];
-	}
-};

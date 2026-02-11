@@ -265,11 +265,24 @@ export default {
 	constants: archiveConstants,
 };
 
-export const replaceSiteZipWithNew = async (sitePages, siteName, existingArchiveUrl) => {
-	const zip = new AdmZip();
+export const replaceSiteZipWithNew = async (sitePages, siteName, existingArchiveUrl, zip, sitemapXml, sitemapError) => {
+	const zipEntries = zip.getEntries();
+
+	zipEntries.forEach((entry) => {
+		const isImageFolder = entry.entryName.startsWith('images/');
+		if (!isImageFolder) {
+			zip.deleteFile(entry.entryName);
+		}
+	});
+
 	sitePages.forEach((page) => {
 		zip.addFile(page.filename, Buffer.from(page.html, 'utf8'));
 	});
+
+	if (!sitemapError) {
+		zip.addFile('sitemap.xml', Buffer.from(sitemapXml, 'utf8'));
+	}
+
 	const zipBuffer = zip.toBuffer();
 
 	const safeName = slugify(`site-${siteName}-${new Date().getTime()}.zip`, {
@@ -295,4 +308,48 @@ export const replaceSiteZipWithNew = async (sitePages, siteName, existingArchive
 	const { data: urlData } = supabase.storage.from('sites').getPublicUrl(safeName);
 
 	return urlData;
+};
+
+export const filteredZip = async (archiveUrl, page, blockGenerationBlockId) => {
+	try {
+		const response = await fetch(archiveUrl);
+		if (!response.ok) throw new Error(`Fetch error: ${response.statusText}`);
+
+		const zip = new AdmZip(Buffer.from(await response.arrayBuffer()));
+		let targetBlock = null;
+		targetBlock = page.blocks.find((b) => b.generationBlockId === blockGenerationBlockId);
+
+		if (!targetBlock) {
+			throw new Error(`No block with id - ${blockGenerationBlockId}.`);
+		}
+
+		const imagePaths = [];
+
+		function findStringsWithImages(obj) {
+			if (!obj) return;
+			if (typeof obj === 'string') {
+				if (obj.includes('images/')) {
+					const cleanPath = obj.replace(/^(\.\/|\/)/, '');
+					imagePaths.push(cleanPath);
+				}
+			} else if (typeof obj === 'object') {
+				for (const key in obj) {
+					findStringsWithImages(obj[key]);
+				}
+			}
+		}
+
+		findStringsWithImages(targetBlock.variables);
+
+		imagePaths.forEach((path) => {
+			const entry = zip.getEntry(path);
+			if (entry) {
+				zip.deleteFile(entry);
+			}
+		});
+
+		return zip;
+	} catch (e) {
+		throw new Error(e);
+	}
 };
