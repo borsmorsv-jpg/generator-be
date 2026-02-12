@@ -577,7 +577,7 @@ export const regenerateBlock = async (request, reply) => {
 			data: {
 				...siteData,
 				previews: sitePages.map((page) => ({
-					html: page.html,
+					html: page.previewHtml,
 					filename: page.filename,
 					hasErrors: page.pageHasErrors,
 				})),

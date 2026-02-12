@@ -59,6 +59,7 @@ const generateImageWithFal = async (prompt, zip) => {
 
 		return {
 			url: zipPath,
+			base64: response.url,
 			cost: Number(cost.toFixed(4)),
 			size: `${image.width}x${image.height}`,
 		};
@@ -78,8 +79,9 @@ const processImages = async (content, variables, zip) => {
 		const varDef = variables[key];
 
 		if (varDef?.type === 'image' && value?.href && !value.href.startsWith('http')) {
-			const { url, cost } = await generateImageWithFal(value.href, zip);
+			const { url, base64, cost } = await generateImageWithFal(value.href, zip);
 			content[key].href = url;
+			content[key].href64 = base64;
 			totalFalCost += cost;
 		}
 
@@ -87,8 +89,9 @@ const processImages = async (content, variables, zip) => {
 			for (const item of value.values) {
 				for (const [itemKey, itemValue] of Object.entries(item)) {
 					if (itemValue?.href && !itemValue.href.startsWith('http')) {
-						const { url, cost } = await generateImageWithFal(itemValue.href, zip);
+						const { url, base64, cost } = await generateImageWithFal(itemValue.href, zip);
 						item[itemKey].href = url;
+						item[itemKey].href64 = base64;
 						totalFalCost += cost;
 					}
 				}
@@ -424,14 +427,14 @@ const scopeCss = (scss, blockId) => {
 	}
 };
 
-const scopeHtml = (block, blockId) => {
+const scopeHtml = (block, blockId, variables) => {
 	try {
 		const fallbackHTML = `<div id="${blockId}" class="generation-block-error">Failed to render ${block.blockType}</div>`;
 
 		const result = block.hasError
 			? fallbackHTML
 			: nunjucks.renderString(block.html, {
-					...block.variables,
+					...variables,
 					_blockId: blockId,
 				});
 		return `<!-- !HTML-BLOCK:${blockId}:START! -->${result}<!-- !HTML-BLOCK:${blockId}:END! -->`;
@@ -441,22 +444,35 @@ const scopeHtml = (block, blockId) => {
 	}
 };
 
-export const buildPageHtml = (page, globalCss, language, country, seo = {}) => {
+export const buildPageHtml = (page, globalCss, language, country, seo = {}, isPreview = false) => {
 	const filledBlocks = page.blocks.map((block, blockIndex) => {
 		const id = `${block.blockType}-${blockIndex}`;
+
+		const originalVariables = block.variables;
+		const previewVariables = replaceHrefWithHref64(block.variables);
 		return {
 			...block,
 			scopedCss: scopeCss(block.css, id),
-			html: scopeHtml(block, id),
+			html: scopeHtml(block, id, originalVariables),
+			previewHtml: scopeHtml(block, id, previewVariables),
 		};
 	});
 	const blocksHtml = filledBlocks.map((b) => b.html).join('\n');
+	const blocksPreviewHtml = filledBlocks.map((b) => b.previewHtml).join('\n');
 	const blocksCss = filledBlocks.map((b) => b.scopedCss).join('\n');
 	const cssVariables = Object.entries(globalCss || {})
 		.map(([key, value]) => `${key}: ${value};`)
 		.join('\n    ');
 
-	return `<!DOCTYPE html>
+	return {
+		html: getHtmlPageTemplate({ seo, page, country, language, blocksCss, blocksHtml, cssVariables }),
+		previewHtml: getHtmlPageTemplate({ seo, page, country, language, blocksCss, blocksHtml: blocksPreviewHtml, cssVariables })
+	};
+};
+
+const getHtmlPageTemplate = ({ seo, page, country, language, cssVariables, blocksCss, blocksHtml }) => {
+	return (
+		`<!DOCTYPE html>
 <html lang="${language}">
 <head>
     <meta charset="UTF-8">
@@ -503,11 +519,12 @@ export const buildPageHtml = (page, globalCss, language, country, seo = {}) => {
 <body>
     ${blocksHtml}
 </body>
-</html>`;
-};
+</html>`
+	)
+}
 
 export const buildSitePages = (pages, globalCss, language, country) => {
-	return pages.map((page, pageIndex) => {
+	return pages.map((page) => {
 		const pageHasErrors = page?.blocks?.some((block) => block.hasError);
 		const blocks = page?.blocks?.map((block, blockIndex) => {
 			return {
@@ -523,12 +540,15 @@ export const buildSitePages = (pages, globalCss, language, country) => {
 			};
 		});
 
+		const { html, previewHtml } = buildPageHtml(page, globalCss, language, country, page.seo);
+
 		return {
 			...page,
 			blocks,
 			pageHasErrors,
 			filename: page.path === '/' ? 'index.html' : `${page.path.replace('/', '')}.html`,
-			html: buildPageHtml(page, globalCss, language, country, page.seo),
+			html,
+			previewHtml,
 		};
 	});
 };
@@ -603,3 +623,24 @@ export const flatPageBlocks = (pages) => {
 	}, []);
 };
 
+const replaceHrefWithHref64 = (value) => {
+	if (!value || typeof value !== 'object') return value;
+
+	if (Array.isArray(value)) {
+		return value.map(item => replaceHrefWithHref64(item));
+	}
+
+	const newValue = { ...value };
+
+	for (const key in newValue) {
+		if (Object.hasOwn(newValue, key)) {
+			newValue[key] = replaceHrefWithHref64(newValue[key]);
+		}
+	}
+
+	if ('href' in newValue && 'href64' in newValue) {
+		newValue.href = newValue.href64;
+	}
+
+	return newValue;
+}

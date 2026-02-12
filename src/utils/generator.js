@@ -174,7 +174,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 		sitePages,
 		siteConfigDetailed,
 		previews: sitePages.map((page) => ({
-			html: page.html,
+			html: page.previewHtml,
 			filename: page.filename,
 			hasErrors: page.pageHasErrors,
 		})),
