@@ -251,40 +251,23 @@ export const getOneSite = async (request, reply) => {
 			.from(sites)
 			.where(eq(sites.id, parseInt(siteId)));
 
-		const response = await fetch(site.archiveUrl);
-		if (!response.ok) {
-			throw new Error(`Failed to download archive: ${response.status}`);
-		}
-
-		const responseArrayBuffer = await response.arrayBuffer();
-		const zip = await JSZip.loadAsync(responseArrayBuffer);
-
-		const htmlFiles = Object.keys(zip.files).filter((filename) =>
-			filename.toLowerCase().endsWith('.html'),
+		const sitePages = buildSitePages(
+			site.siteConfigDetailed.pages,
+			site.siteConfigDetailed.generatedTheme,
+			site.language,
+			site.country,
 		);
 
-		const previews = await Promise.all(
-			htmlFiles.map(async (filename) => {
-				try {
-					const html = await zip.file(filename).async('string');
-					return {
-						filename,
-						html,
-					};
-				} catch (error) {
-					return {
-						filename,
-						html: null,
-					};
-				}
-			}),
-		);
 
 		reply.send({
 			success: true,
 			data: {
 				...site,
-				previews,
+				previews: sitePages.map((page) => ({
+					html: page.previewHtml,
+					filename: page.filename,
+					hasErrors: page.pageHasErrors,
+				})),
 				siteConfig: site?.siteConfigDetailed?.pages?.map((page) => ({
 					...page,
 					blocks: page?.blocks?.map((block) => ({
