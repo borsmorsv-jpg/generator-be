@@ -148,6 +148,7 @@ If these rules are violated, the response is considered INVALID`
         if (pageCount === 1) {
             return {
                 pages: [{
+                    ...(pages[0] || {}),
                     path: "/",
                     title: "Home",
                     seo: normalizedPages[0]?.seo || createFallbackSEO(prompt, language, country, "Home")
