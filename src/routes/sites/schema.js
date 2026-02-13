@@ -50,6 +50,9 @@ export const getAllSitesSchema = {
 			searchByName: { type: 'string' },
 			createdByUserId: { type: 'string' },
 			updatedByUserId: { type: 'string' },
+			trafficSource: { type: 'string' },
+			country: { type: 'string' },
+			language: { type: 'string' },
 			searchById: { type: 'string' },
 			sortBy: {
 				type: 'string',
