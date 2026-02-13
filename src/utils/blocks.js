@@ -132,11 +132,8 @@ export const generateBlockContent = async (
 	templatePages = null,
 	zip,
 ) => {
-	const filteredVariables = Object.entries(variables).filter(([name, v]) => v.type !== 'nav');
-
-	const variablesDescription = filteredVariables
-		.map(([name, v]) => `- ${name} (type: ${v.type})`)
-		.join('\n');
+	const variablesDescription = buildVariablesDescription(variables);
+	const expectedShape = buildExpectedShape(variables);
 
 	const navInstruction = templatePages
 		? `
@@ -167,103 +164,28 @@ Your task:
 
 ${navInstruction}
 =====================
-CONTENT VARIABLES RULES
+STRUCTURE TO FILL (from this block's definition)
 =====================
-GENERAL RULES:
-1. TEXT VARIABLES: {"variableName": {"value": "text content"}}
-2. IMAGE VARIABLES: {"variableName": {"href": "detailed image description for AI image generation", "alt": "alt text"}}
-3. LINK VARIABLES: {"variableName": {"value": null, "href": "url", "label": "text"}}
-4. ARRAY VARIABLES: 
-   For array variables, fill the "values" array with complete objects.
-   Each object in the array should contain all its nested fields.
-
-ARRAY VARIABLES RULES (apply to ALL arrays):
-- Fill the "values" array with complete objects
-- Each object in the array should contain ALL its nested fields
-- For nested fields, follow the same rules:
-  * Text fields: {"fieldName": {"value": "text"}}
-  * Image fields: {"fieldName": {"href": "image description", "alt": "alt text"}}
-  * Link fields: {"fieldName": {"value": null, "href": "url", "label": "text"}}
-  * Array fields: Apply these same rules recursively
-
-VARIABLES TO FILL:
 ${variablesDescription}
 
+Use exactly these variable names and structure. Format:
+- text: {"variableName": {"value": "content"}}
+- image: {"variableName": {"href": "image description for AI", "alt": "alt text"}}
+- link: {"variableName": {"value": null, "href": "url", "label": "text"}}
+- array: {"variableName": {"type": "array", "values": [{ ...each key from above list... }, ...]}}
+
 =====================
-OUTPUT FORMAT
+EXPECTED SHAPE (fill with real content, 3–5 items for arrays)
 =====================
-Return a FLAT JSON object where each key is the variable name.
-
-EXAMPLES:
-
-Example 1: Array named "cards":
-{
-  "cards": {
-    "type": "array",
-    "values": [
-      {
-        "image": {"href": "modern office design with plants", "alt": "Office design"},
-        "title": {"value": "Office Design"},
-        "description": {"value": "Ergonomic workspace solutions"},
-        "link": {"value": null, "href": "#", "label": "Learn More"}
-      },
-      {
-        "image": {"href": "team collaboration meeting", "alt": "Team meeting"},
-        "title": {"value": "Team Collaboration"},
-        "description": {"value": "Spaces for effective teamwork"},
-        "link": {"value": null, "href": "#", "label": "Learn More"}
-      }
-    ]
-  }
-}
-
-Example 2: Array named "products":
-{
-  "products": {
-    "type": "array",
-    "values": [
-      {
-        "productImage": {"href": "modern laptop on desk", "alt": "Laptop product"},
-        "productName": {"value": "Pro Laptop"},
-        "price": {"value": "$999"},
-        "features": {
-          "type": "array",
-          "values": [
-            {"feature": {"value": "16GB RAM"}},
-            {"feature": {"value": "512GB SSD"}},
-            {"feature": {"value": "14-inch Display"}}
-          ]
-        }
-      }
-    ]
-  }
-}
-
-Example 3: Array named "testimonials":
-{
-  "testimonials": {
-    "type": "array",
-    "values": [
-      {
-        "avatar": {"href": "smiling business person", "alt": "Customer avatar"},
-        "name": {"value": "John Smith"},
-        "position": {"value": "CEO at Company"},
-        "quote": {"value": "Excellent service!"}
-      }
-    ]
-  }
-}${
+${expectedShape}
+${
 		templatePages
-			? `,
-  "navigationLabels": ["Label 1", "Label 2"]`
+			? `
+If navigation labels were requested above, add to your JSON: "navigationLabels": ["Label 1", "Label 2", ...]`
 			: ''
 	}
 
-IMPORTANT: Apply array rules to ANY array variable regardless of its name.
-For array items, include ALL required fields from the definition.
-Do NOT use "type" field inside array items unless specified in definition.
-
-Return ONLY valid JSON. All text in ${language}.
+Return ONLY valid JSON. All text in ${language}. No empty strings.
 `;
 
 	const completion = await openai.chat.completions.create({
@@ -387,11 +309,11 @@ export const prepareGlobalBlocks = async (
 
 				const navigation = {
 					type: 'nav',
-					value: templatePages.map((page, index) => ({
+					value: templatePages?.length > 1 ? templatePages.map((page, index) => ({
 						href: page.path === '/' ? './index.html' : `.${page.path}.html`,
 						label: navigationLabels?.[index] || page.title,
 						active: false,
-					})),
+					})) : [],
 				};
 
 				const variables = { ...aiContent, navigation };
@@ -643,4 +565,46 @@ const replaceHrefWithHref64 = (value) => {
 	}
 
 	return newValue;
+}
+
+function buildVariablesDescription(variables) {
+	const lines = [];
+	for (const [name, v] of Object.entries(variables)) {
+		if (v?.type === 'nav') continue;
+		if (v?.type === 'array' && Array.isArray(v.values) && v.values[0]) {
+			const itemKeys = Object.entries(v.values[0])
+				.filter(([, field]) => typeof field === 'object' && field?.type)
+				.map(([k, field]) => `${k} (${field.type})`);
+			lines.push(`- ${name} (type: array). Each item: ${itemKeys.join(', ')}`);
+		} else {
+			const desc = v?.description ? ` — ${v.description}` : '';
+			lines.push(`- ${name} (type: ${v?.type ?? 'text'})${desc}`);
+		}
+	}
+	return lines.join('\n');
+}
+
+function buildExpectedShape(variables) {
+	const out = {};
+	for (const [name, v] of Object.entries(variables)) {
+		if (v?.type === 'nav') continue;
+		if (v?.type === 'array' && Array.isArray(v.values) && v.values[0]) {
+			const item = {};
+			for (const [k, field] of Object.entries(v.values[0])) {
+				if (typeof field !== 'object' || !field?.type) continue;
+				if (field.type === 'text') item[k] = { value: '...' };
+				else if (field.type === 'image') item[k] = { href: '...', alt: '...' };
+				else if (field.type === 'link') item[k] = { value: null, href: '...', label: '...' };
+				else item[k] = { value: '...' };
+			}
+			out[name] = { type: 'array', values: [item, { ...JSON.parse(JSON.stringify(item)) }] };
+		} else if (v?.type === 'image') {
+			out[name] = { href: '...', alt: '...' };
+		} else if (v?.type === 'link') {
+			out[name] = { value: null, href: '...', label: '...' };
+		} else {
+			out[name] = { value: '...' };
+		}
+	}
+	return JSON.stringify(out, null, 2);
 }
