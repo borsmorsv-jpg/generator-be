@@ -160,25 +160,25 @@ export const getAllSites = async (request, reply) => {
 
 		const filters = [];
 
-		if (searchByName) filters.push(ilike(blocks.name, `%${searchByName}%`));
+		if (searchByName) filters.push(ilike(sites.name, `%${searchByName}%`));
 		if (searchById) {
-			filters.push(sql`CAST(${blocks.id} AS TEXT) ILIKE ${'%' + searchById + '%'}`);
+			filters.push(sql`CAST(${sites.id} AS TEXT) ILIKE ${'%' + searchById + '%'}`);
 		}
-		if (createdBy) filters.push(eq(blocks.createdBy, createdBy));
-		if (updatedBy) filters.push(eq(blocks.updatedBy, updatedBy));
+		if (createdBy) filters.push(eq(sites.createdBy, createdBy));
+		if (updatedBy) filters.push(eq(sites.updatedBy, updatedBy));
 
-		if (createdAtFromDate) filters.push(gte(blocks.createdAt, createdAtFromDate));
-		if (createdAtToDate) filters.push(lte(blocks.createdAt, createdAtToDate));
-		if (updatedAtFromDate) filters.push(gte(blocks.updatedAt, updatedAtFromDate));
-		if (updatedAtToDate) filters.push(lte(blocks.updatedAt, updatedAtToDate));
+		if (createdAtFromDate) filters.push(gte(sites.createdAt, createdAtFromDate));
+		if (createdAtToDate) filters.push(lte(sites.createdAt, createdAtToDate));
+		if (updatedAtFromDate) filters.push(gte(sites.updatedAt, updatedAtFromDate));
+		if (updatedAtToDate) filters.push(lte(sites.updatedAt, updatedAtToDate));
 
-		if (createdByUserId) filters.push(lte(blocks.createdBy, createdByUserId));
-		if (updatedByUserId) filters.push(lte(blocks.updatedBy, updatedByUserId));
+		if (createdByUserId) filters.push(lte(sites.createdBy, createdByUserId));
+		if (updatedByUserId) filters.push(lte(sites.updatedBy, updatedByUserId));
 
 		if (isActive === 'true') {
-			filters.push(eq(blocks.isActive, true));
+			filters.push(eq(sites.isActive, true));
 		} else if (isActive === 'false') {
-			filters.push(eq(blocks.isActive, false));
+			filters.push(eq(sites.isActive, false));
 		}
 
 		const order = (column) => (sortOrder === 'asc' ? asc(column) : desc(column));
