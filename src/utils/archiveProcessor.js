@@ -265,7 +265,7 @@ export default {
 	constants: archiveConstants,
 };
 
-export const replaceSiteZipWithNew = async (sitePages, siteName, existingArchiveUrl, zip, sitemapXml, sitemapError) => {
+export const replaceSiteZipWithNew = async (sitePages, siteName, existingArchiveUrl, zip, sitemapXml, sitemapError, nginxConfig) => {
 	const zipEntries = zip.getEntries();
 
 	zipEntries.forEach((entry) => {
@@ -281,6 +281,10 @@ export const replaceSiteZipWithNew = async (sitePages, siteName, existingArchive
 
 	if (!sitemapError) {
 		zip.addFile('sitemap.xml', Buffer.from(sitemapXml, 'utf8'));
+	}
+
+	if (nginxConfig) {
+		zip.addFile('nginx.conf', Buffer.from(nginxConfig, 'utf8'));
 	}
 
 	const zipBuffer = zip.toBuffer();

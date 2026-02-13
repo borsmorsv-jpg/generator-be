@@ -272,3 +272,24 @@ ${urlEntries}
 		};
 	}
 };
+
+export const generateNginxConfig = ({ serverName, rootDir } = {}) => {
+	const cleanServerName = serverName
+		? serverName.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim()
+		: '';
+	const effectiveServerName = cleanServerName.length > 0 ? cleanServerName : '_';
+	const effectiveRootDir = rootDir?.trim() || '/var/www/html';
+
+	return `server {
+	listen 80;
+	server_name ${effectiveServerName};
+
+	# Adjust root to the folder where you unpacked the site
+	root ${effectiveRootDir};
+	index index.html;
+
+	location / {
+		try_files $uri $uri/ $uri.html /index.html;
+	}
+}`;
+};

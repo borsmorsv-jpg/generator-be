@@ -13,7 +13,7 @@ import {
 	prepareGlobalBlocks,
 } from '../../utils/blocks.js';
 import { filteredZip, replaceSiteZipWithNew } from '../../utils/archiveProcessor.js';
-import { generateSite, generateSitemapXml } from '../../utils/generator.js';
+import { generateNginxConfig, generateSite, generateSitemapXml } from '../../utils/generator.js';
 import Decimal from 'decimal.js';
 
 function cutNumber(number, amountAfterDot) {
@@ -54,6 +54,7 @@ export const createSite = async (request, reply) => {
 
 		let tempDomain = 'http://localhost:3000';
 		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, tempDomain);
+		const nginxConfig = generateNginxConfig({ serverName: domain });
 
 		// const zip = new AdmZip();
 		sitePages.forEach((page) => {
@@ -62,6 +63,10 @@ export const createSite = async (request, reply) => {
 
 		if (!sitemapError) {
 			zip.addFile('sitemap.xml', Buffer.from(siteMapBody, 'utf8'));
+		}
+
+		if (nginxConfig) {
+			zip.addFile('nginx.conf', Buffer.from(nginxConfig, 'utf8'));
 		}
 
 		const zipBuffer = zip.toBuffer();
@@ -371,6 +376,7 @@ export const regenerateSite = async (request, reply) => {
 		});
 
 		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, site.domain);
+		const nginxConfig = generateNginxConfig({ serverName: site.domain });
 
 		sitePages.forEach((page) => {
 			zip.addFile(page.filename, Buffer.from(page.html, 'utf8'));
@@ -380,7 +386,7 @@ export const regenerateSite = async (request, reply) => {
 			zip.addFile('sitemap.xml', Buffer.from(siteMapBody, 'utf8'));
 		}
 
-		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl, zip, siteMapBody, sitemapError);
+		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl, zip, siteMapBody, sitemapError, nginxConfig);
 
 		const [siteData] = await db
 			.update(sites)
@@ -528,7 +534,10 @@ export const regenerateBlock = async (request, reply) => {
 		);
 
 		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, site.domain);
-		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl, currentSiteZip, siteMapBody, sitemapError);
+
+		const nginxConfig = generateNginxConfig({ serverName: site.domain });
+
+		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl, currentSiteZip, siteMapBody, sitemapError, nginxConfig);
 
 		const siteConfigDetailed = {
 			pages: sitePages?.map((page) => ({
