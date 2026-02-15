@@ -1,9 +1,8 @@
 import { db, supabase } from '../../db/connection.js';
-import { blocks, profiles, sites, templates } from '../../db/schema.js';
+import { profiles, sites, templates } from '../../db/schema.js';
 import { and, asc, count, desc, eq, gte, ilike, lte, sql } from 'drizzle-orm';
 import AdmZip from 'adm-zip';
 import { alias } from 'drizzle-orm/pg-core';
-import JSZip from 'jszip';
 import { PRICE_FOR_PROMPTS_OPENAI } from '../../config/constants.js';
 import slugify from 'slugify';
 import {
@@ -503,22 +502,24 @@ export const regenerateBlock = async (request, reply) => {
 			return {
 				...page,
 				blocks: page.blocks.map((block, blockIndex) => {
-					if (block.generationBlockId !== generationBlockId) {
-						return block;
+					const generationBlockMatch = block.generationBlockId === generationBlockId;
+					const globalTypeMatch = isBlockGlobal && block.blockType === generatedBlock.category;
+					if (generationBlockMatch || globalTypeMatch) {
+						return {
+							id: generatedBlock.id,
+							isGlobal: isBlockGlobal,
+							blockType: generatedBlock.category,
+							blockIndex: blockIndex,
+							generationBlockId: `${generatedBlock.category}-${blockIndex}`,
+							definition: generatedBlock.definition,
+							variables: generatedBlock.variables,
+							hasError: false,
+							css: generatedBlock.css,
+							html: generatedBlock.html,
+						};
 					}
 
-					return {
-						id: generatedBlock.id,
-						isGlobal: isBlockGlobal,
-						blockType: generatedBlock.category,
-						blockIndex: blockIndex,
-						generationBlockId: `${generatedBlock.category}-${blockIndex}`,
-						definition: generatedBlock.definition,
-						variables: generatedBlock.variables,
-						hasError: false,
-						css: generatedBlock.css,
-						html: generatedBlock.html,
-					};
+					return block;
 				}),
 			};
 		});

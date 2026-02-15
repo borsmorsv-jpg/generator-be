@@ -233,8 +233,6 @@ export const prepareBlock = async (block, prompt, country, language, navigation 
 			zip
 		);
 
-		console.log('aiContent', aiContent);
-
 		const variables = navigation ? { ...aiContent, navigation } : aiContent;
 
 		return { ...block, variables, tokens };
@@ -317,7 +315,6 @@ export const prepareGlobalBlocks = async (
 				};
 
 				const variables = { ...aiContent, navigation };
-				console.log('aiContent', aiContent);
 				// const html = nunjucks.renderString(block.html, variables);
 
 				return { ...block, variables, tokens };
@@ -450,7 +447,7 @@ export const buildSitePages = (pages, globalCss, language, country) => {
 		const pageHasErrors = page?.blocks?.some((block) => block.hasError);
 		const blocks = page?.blocks?.map((block, blockIndex) => {
 			return {
-				blockId: block.id,
+				blockId: block.id || block.blockId,
 				isGlobal: block.isGlobal,
 				blockType: block.blockType,
 				generationBlockId: `${block.blockType}-${blockIndex}`,
