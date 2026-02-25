@@ -248,7 +248,6 @@ export const updateTemplate = async (request, reply) => {
 			updatedAt: new Date(),
 		};
 
-		// If no new file — simple update
 		if (!fileData) {
 			const [updatedTemplate] = await db
 				.update(templates)
