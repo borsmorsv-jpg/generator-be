@@ -43,15 +43,7 @@ export const createSite = async (request, reply) => {
 		};
 
 		const zip = new AdmZip();
-		// const { tokens, siteConfig, sitePages, siteConfigDetailed, previews } = await generateSite({
-		// 	currentTokens,
-		// 	template,
-		// 	prompt,
-		// 	country,
-		// 	language,
-		// 	zip,
-		// });
-		const pageBlocks = await generateSite({
+		const { tokens, siteConfig, sitePages, siteConfigDetailed, previews } = await generateSite({
 			currentTokens,
 			template,
 			prompt,
@@ -60,9 +52,9 @@ export const createSite = async (request, reply) => {
 			zip,
 		});
 
-		return reply.status(200).send({
-			pageBlocks
-		})
+		// return reply.status(200).send({
+		// 	pageBlocks
+		// })
 
 		let tempDomain = 'http://localhost:3000';
 		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, tempDomain);
