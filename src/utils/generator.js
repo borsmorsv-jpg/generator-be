@@ -1,15 +1,18 @@
 import {
 	buildSitePages,
+	expandedDefinition,
+	fillAnchors,
 	flatPageBlocks,
 	generateTheme,
 	getBlockByType,
 	getBlocks,
 	prepareBlock,
 	prepareGlobalBlocks,
+	transformToStructuredBlocks,
 } from './blocks.js';
 import { PRICE_FOR_PROMPTS_OPENAI } from '../config/constants.js';
 import dayjs from 'dayjs';
-import {generatePagesWithAI} from "./pages.js";
+import { generatePagesWithAI } from './pages.js';
 
 export const generateSite = async ({ currentTokens, template, prompt, country, language, zip }) => {
 	const tokensInfo = {
@@ -65,8 +68,16 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 						};
 					} else {
 						const block = await getBlockByType(blockDef.type);
-						const preparedBlock = await prepareBlock(block, prompt, country, language, null, zip);
-
+						const {newVariables: newVars, usedKeys, contents} = await expandedDefinition(block.definition);
+						const expandedBlock = {...block, definition: {variables: newVars} }
+						const preparedBlock = await prepareBlock(
+							expandedBlock,
+							prompt,
+							country,
+							language,
+							null,
+							zip,
+						);
 						tokens.totalPromptTokens += preparedBlock.tokens.promptTokens;
 						tokens.totalCompletionTokens += preparedBlock.tokens.completionTokens;
 						tokens.totalTokens += preparedBlock.tokens.totalTokens;
@@ -76,6 +87,10 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 							hasError: false,
 							...baseInfo,
 							...preparedBlock,
+							additionalInfo: {
+								usedKeys,
+								contents
+							}
 						};
 					}
 				} catch (error) {
@@ -118,7 +133,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 		prompt,
 		pages: template.definition.pages,
 		country,
-		language
+		language,
 	});
 
 	const final = await Promise.all([
@@ -126,10 +141,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 		populatePagesWithContent(template, generatedPages),
 	]);
 
-	const [
-		{ theme: generatedTheme, tokens: themeTokens },
-		{ pages, tokens: pagesTokens },
-	] = final;
+	const [{ theme: generatedTheme, tokens: themeTokens }, { pages, tokens: pagesTokens }] = final;
 
 	tokensInfo.totalPromptTokens +=
 		themeTokens.totalPromptTokens + pagesTokens.totalPromptTokens + seoTokens.totalPromptTokens;
@@ -152,8 +164,9 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 	const openAiOutputPrice =
 		tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS_OPENAI.output / 1000000);
 	const openAiTotalPrice = openAiInputPrice + openAiOutputPrice;
-
-	const sitePages = buildSitePages(pages, globalCss, language, country);
+	const updatedPagesWithAnchors = fillAnchors(pages);
+	const blocksCollection = transformToStructuredBlocks(updatedPagesWithAnchors);
+	const sitePages = buildSitePages(blocksCollection, globalCss, language, country);
 	const siteConfigDetailed = {
 		pages: sitePages?.map((page) => ({
 			title: page.title,
@@ -191,7 +204,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 	};
 };
 
-export const generateSitemapXml = (sitePages, domain = "http://localhost:3000") => {
+export const generateSitemapXml = (sitePages, domain = 'http://localhost:3000') => {
 	try {
 		let baseUrl;
 
@@ -275,7 +288,10 @@ ${urlEntries}
 
 export const generateNginxConfig = ({ serverName, rootDir } = {}) => {
 	const cleanServerName = serverName
-		? serverName.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim()
+		? serverName
+				.replace(/^https?:\/\//i, '')
+				.replace(/\/.*$/, '')
+				.trim()
 		: '';
 	const effectiveServerName = cleanServerName.length > 0 ? cleanServerName : '_';
 	const effectiveRootDir = rootDir?.trim() || '/var/www/html';

@@ -322,6 +322,7 @@ export const updateBlock = async (request, reply) => {
 		const archiveBuffer = fileData._buf || (await fileData.toBuffer());
 
 		archiveProcessor.validateArchive(archiveBuffer, fileData.mimetype, fileData.filename);
+		await archiveProcessor.extractAndValidate(archiveBuffer);
 
 		const newDefinition = {
 			originalArchive: fileData.filename,

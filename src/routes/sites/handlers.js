@@ -7,9 +7,12 @@ import { PRICE_FOR_PROMPTS_OPENAI } from '../../config/constants.js';
 import slugify from 'slugify';
 import {
 	buildSitePages,
+	expandedDefinition,
+	fillAnchors,
 	getBlockByType,
 	prepareBlock,
 	prepareGlobalBlocks,
+	transformToStructuredBlocks,
 } from '../../utils/blocks.js';
 import { filteredZip, replaceSiteZipWithNew } from '../../utils/archiveProcessor.js';
 import { generateNginxConfig, generateSite, generateSitemapXml } from '../../utils/generator.js';
@@ -269,7 +272,6 @@ export const getOneSite = async (request, reply) => {
 			site.country,
 		);
 
-
 		reply.send({
 			success: true,
 			data: {
@@ -371,7 +373,7 @@ export const regenerateSite = async (request, reply) => {
 			prompt,
 			country: site.country,
 			language: site.language,
-			zip
+			zip,
 		});
 
 		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, site.domain);
@@ -385,7 +387,15 @@ export const regenerateSite = async (request, reply) => {
 			zip.addFile('sitemap.xml', Buffer.from(siteMapBody, 'utf8'));
 		}
 
-		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl, zip, siteMapBody, sitemapError, nginxConfig);
+		const urlData = await replaceSiteZipWithNew(
+			sitePages,
+			site.name,
+			site.archiveUrl,
+			zip,
+			siteMapBody,
+			sitemapError,
+			nginxConfig,
+		);
 
 		const [siteData] = await db
 			.update(sites)
@@ -415,7 +425,7 @@ export const regenerateSite = async (request, reply) => {
 			success: true,
 		});
 	} catch (err) {
-		console.log("err", err)
+		console.log('err', err);
 		reply.status(500).send({
 			error: err.message,
 			success: false,
@@ -466,7 +476,7 @@ export const regenerateBlock = async (request, reply) => {
 				site.prompt || prompt,
 				site.country,
 				site.language,
-				currentSiteZip
+				currentSiteZip,
 			);
 
 			tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
@@ -475,13 +485,15 @@ export const regenerateBlock = async (request, reply) => {
 			tokensInfo.totalFalCost += preparedBlock.tokens.totalFalCost;
 			generatedBlock = preparedBlock;
 		} else {
+			const {newVariables: newVars, usedKeys, contents} = await expandedDefinition(block.definition);
+			const expandedBlock = {...block, definition: {variables: newVars} }
 			const preparedBlock = await prepareBlock(
-				block,
+				expandedBlock,
 				site.prompt || prompt,
 				site.country,
 				site.language,
 				null,
-				currentSiteZip
+				currentSiteZip,
 			);
 
 			tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
@@ -489,7 +501,7 @@ export const regenerateBlock = async (request, reply) => {
 			tokensInfo.totalTokens += preparedBlock.tokens.totalTokens;
 			tokensInfo.totalFalCost += preparedBlock.tokens.totalFalCost;
 
-			generatedBlock = preparedBlock;
+			generatedBlock = {...preparedBlock, additionalInfo: {usedKeys, contents}};
 		}
 
 		const updatedPages = site.siteConfigDetailed?.pages?.map((page) => {
@@ -503,12 +515,14 @@ export const regenerateBlock = async (request, reply) => {
 				...page,
 				blocks: page.blocks.map((block, blockIndex) => {
 					const generationBlockMatch = block.generationBlockId === generationBlockId;
-					const globalTypeMatch = isBlockGlobal && block.blockType === generatedBlock.category;
+					const globalTypeMatch =
+						isBlockGlobal && block.blockType === generatedBlock.category;
 					if (generationBlockMatch || globalTypeMatch) {
 						return {
 							id: generatedBlock.id,
 							isGlobal: isBlockGlobal,
 							blockType: generatedBlock.category,
+							category: generatedBlock.category,
 							blockIndex: blockIndex,
 							generationBlockId: `${generatedBlock.category}-${blockIndex}`,
 							definition: generatedBlock.definition,
@@ -516,18 +530,28 @@ export const regenerateBlock = async (request, reply) => {
 							hasError: false,
 							css: generatedBlock.css,
 							html: generatedBlock.html,
+							additionalInfo: generatedBlock.additionalInfo
 						};
 					}
-
-					return block;
+					
+					return {
+							...block,
+							id: block.blockId,
+							category: block.blockType,
+							additionalInfo: {
+								usedKeys: [],
+								contents: []
+							}
+						};
 				}),
 			};
 		});
 
-		// console.log("site.siteConfigDetailed.seoPages", site.siteConfigDetailed.seoPages)
+		const updatedPagesWithAnchor = fillAnchors(updatedPages, isBlockGlobal ? '' : pageName);
+		const blocksCollection = transformToStructuredBlocks(updatedPagesWithAnchor);
 
 		const sitePages = buildSitePages(
-			updatedPages,
+			blocksCollection,
 			site.siteConfigDetailed.generatedTheme,
 			site.language,
 			site.country,
@@ -538,7 +562,15 @@ export const regenerateBlock = async (request, reply) => {
 
 		const nginxConfig = generateNginxConfig({ serverName: site.domain });
 
-		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl, currentSiteZip, siteMapBody, sitemapError, nginxConfig);
+		const urlData = await replaceSiteZipWithNew(
+			sitePages,
+			site.name,
+			site.archiveUrl,
+			currentSiteZip,
+			siteMapBody,
+			sitemapError,
+			nginxConfig,
+		);
 
 		const siteConfigDetailed = {
 			pages: sitePages?.map((page) => ({
@@ -596,7 +628,7 @@ export const regenerateBlock = async (request, reply) => {
 			success: true,
 		});
 	} catch (err) {
-		console.log("error", err);
+		console.log('error', err);
 		reply.status(500).send({
 			error: err.message,
 			success: false,

@@ -9,7 +9,11 @@ if (!config.database.connectionString) {
 }
 
 const connectionString = config.database.connectionString;
-const client = postgres(connectionString, { max: 1 });
+const client = postgres(connectionString, {
+	max: 50,
+	idle_timeout: 20,
+	connect_timeout: 10,
+});
 
 export const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
 
