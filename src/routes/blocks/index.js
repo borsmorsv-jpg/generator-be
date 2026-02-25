@@ -10,7 +10,7 @@ import multipart from '@fastify/multipart';
 
 const routes = async (fastify) => {
 	fastify.register(multipart, {
-		attachFieldsToBody: true,
+		attachFieldsToBody: true, // <-- this is the fix
 		limits: {
 			fileSize: 100 * 1024 * 1024,
 		},

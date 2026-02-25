@@ -7,7 +7,6 @@ import { PRICE_FOR_PROMPTS_OPENAI } from '../../config/constants.js';
 import slugify from 'slugify';
 import {
 	buildSitePages,
-	fillAnchors,
 	getBlockByType,
 	prepareBlock,
 	prepareGlobalBlocks,
@@ -43,15 +42,7 @@ export const createSite = async (request, reply) => {
 		};
 
 		const zip = new AdmZip();
-		// const { tokens, siteConfig, sitePages, siteConfigDetailed, previews } = await generateSite({
-		// 	currentTokens,
-		// 	template,
-		// 	prompt,
-		// 	country,
-		// 	language,
-		// 	zip,
-		// });
-		const pageBlocks = await generateSite({
+		const { tokens, siteConfig, sitePages, siteConfigDetailed, previews } = await generateSite({
 			currentTokens,
 			template,
 			prompt,
@@ -59,10 +50,6 @@ export const createSite = async (request, reply) => {
 			language,
 			zip,
 		});
-
-		return reply.status(200).send({
-			pageBlocks
-		})
 
 		let tempDomain = 'http://localhost:3000';
 		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, tempDomain);
@@ -282,6 +269,7 @@ export const getOneSite = async (request, reply) => {
 			site.country,
 		);
 
+
 		reply.send({
 			success: true,
 			data: {
@@ -383,7 +371,7 @@ export const regenerateSite = async (request, reply) => {
 			prompt,
 			country: site.country,
 			language: site.language,
-			zip,
+			zip
 		});
 
 		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, site.domain);
@@ -397,15 +385,7 @@ export const regenerateSite = async (request, reply) => {
 			zip.addFile('sitemap.xml', Buffer.from(siteMapBody, 'utf8'));
 		}
 
-		const urlData = await replaceSiteZipWithNew(
-			sitePages,
-			site.name,
-			site.archiveUrl,
-			zip,
-			siteMapBody,
-			sitemapError,
-			nginxConfig,
-		);
+		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl, zip, siteMapBody, sitemapError, nginxConfig);
 
 		const [siteData] = await db
 			.update(sites)
@@ -435,7 +415,7 @@ export const regenerateSite = async (request, reply) => {
 			success: true,
 		});
 	} catch (err) {
-		console.log('err', err);
+		console.log("err", err)
 		reply.status(500).send({
 			error: err.message,
 			success: false,
@@ -486,7 +466,7 @@ export const regenerateBlock = async (request, reply) => {
 				site.prompt || prompt,
 				site.country,
 				site.language,
-				currentSiteZip,
+				currentSiteZip
 			);
 
 			tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
@@ -501,7 +481,7 @@ export const regenerateBlock = async (request, reply) => {
 				site.country,
 				site.language,
 				null,
-				currentSiteZip,
+				currentSiteZip
 			);
 
 			tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
@@ -523,14 +503,12 @@ export const regenerateBlock = async (request, reply) => {
 				...page,
 				blocks: page.blocks.map((block, blockIndex) => {
 					const generationBlockMatch = block.generationBlockId === generationBlockId;
-					const globalTypeMatch =
-						isBlockGlobal && block.blockType === generatedBlock.category;
+					const globalTypeMatch = isBlockGlobal && block.blockType === generatedBlock.category;
 					if (generationBlockMatch || globalTypeMatch) {
 						return {
 							id: generatedBlock.id,
 							isGlobal: isBlockGlobal,
 							blockType: generatedBlock.category,
-							category: generatedBlock.category,
 							blockIndex: blockIndex,
 							generationBlockId: `${generatedBlock.category}-${blockIndex}`,
 							definition: generatedBlock.definition,
@@ -540,20 +518,16 @@ export const regenerateBlock = async (request, reply) => {
 							html: generatedBlock.html,
 						};
 					}
-					
-					return {
-							...block,
-							id: block.blockId,
-							category: block.blockType,
-						};
+
+					return block;
 				}),
 			};
 		});
 
-		const updatedPagesWithAnchor = fillAnchors(updatedPages, isBlockGlobal ? '' : pageName);
+		// console.log("site.siteConfigDetailed.seoPages", site.siteConfigDetailed.seoPages)
 
 		const sitePages = buildSitePages(
-			updatedPagesWithAnchor,
+			updatedPages,
 			site.siteConfigDetailed.generatedTheme,
 			site.language,
 			site.country,
@@ -564,15 +538,7 @@ export const regenerateBlock = async (request, reply) => {
 
 		const nginxConfig = generateNginxConfig({ serverName: site.domain });
 
-		const urlData = await replaceSiteZipWithNew(
-			sitePages,
-			site.name,
-			site.archiveUrl,
-			currentSiteZip,
-			siteMapBody,
-			sitemapError,
-			nginxConfig,
-		);
+		const urlData = await replaceSiteZipWithNew(sitePages, site.name, site.archiveUrl, currentSiteZip, siteMapBody, sitemapError, nginxConfig);
 
 		const siteConfigDetailed = {
 			pages: sitePages?.map((page) => ({
@@ -630,7 +596,7 @@ export const regenerateBlock = async (request, reply) => {
 			success: true,
 		});
 	} catch (err) {
-		console.log('error', err);
+		console.log("error", err);
 		reply.status(500).send({
 			error: err.message,
 			success: false,

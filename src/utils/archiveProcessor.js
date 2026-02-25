@@ -1,21 +1,12 @@
+// utils/archiveProcessor.js
 import AdmZip from 'adm-zip';
 import { randomBytes } from 'crypto';
 import path from 'path';
 import slugify from 'slugify';
 import { supabase } from '../db/connection.js';
-import nunjucks from 'nunjucks';
 
 // Required files for web template
-const REQUIRED_FILES = ['definition.json', 'index.njk', 'styles.scss'];
-const ALLOWED_KEYS = {
-	text: ['type', 'value'],
-	image: ['type', 'href', 'alt'],
-	link: ['type', 'href', 'value', 'label'],
-	array: ['type', 'values'],
-	nav: ['type', 'value'],
-	anchor: ['type', 'href', 'label'],
-	anchors: ['type', 'value'],
-};
+const REQUIRED_FILES = ['index.njk', 'styles.scss', 'definition.json'];
 
 const ALLOWED_EXTENSIONS = ['.zip'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -24,15 +15,18 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
  * Validate archive file
  */
 export function validateArchive(buffer, mimetype, originalName) {
+	// Check MIME type
 	if (!mimetype.includes('zip') && !mimetype.includes('x-zip-compressed')) {
 		throw new Error('Invalid archive format. Only ZIP files are allowed');
 	}
 
+	// Check file extension
 	const ext = path.extname(originalName).toLowerCase();
 	if (!ALLOWED_EXTENSIONS.includes(ext)) {
 		throw new Error(`Invalid file extension. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`);
 	}
 
+	// Check file size
 	if (buffer.length > MAX_FILE_SIZE) {
 		throw new Error(`Archive too large. Maximum size: ${MAX_FILE_SIZE / 1024 / 1024}MB`);
 	}
@@ -40,88 +34,16 @@ export function validateArchive(buffer, mimetype, originalName) {
 	return true;
 }
 
-function validateField(key, field) {
-	const type = field.type;
-
-	if (!type || typeof type !== 'string') {
-		throw new Error(`Field with name "${key}" has empty or invalid type`);
-	}
-
-	const allowed = ALLOWED_KEYS[type];
-	if (allowed) {
-		Object.keys(field).forEach((fKey) => {
-			if (!allowed.includes(fKey)) {
-				throw new Error(
-					`Field "${key}" (type: ${type}) contains forbidden property: "${fKey}"`,
-				);
-			}
-		});
-	}
-
-	switch (type) {
-		case 'text':
-			if (typeof field.value !== 'string') {
-				throw new Error(`Field "${key}" must have "value"`);
-			}
-			break;
-		case 'image':
-			if (typeof field.href !== 'string' || typeof field.alt !== 'string') {
-				throw new Error(`Field "${key}" must have "href" and "alt"`);
-			}
-			break;
-		case 'link':
-			if (typeof field.href !== 'string' || typeof field.label !== 'string') {
-				throw new Error(`Field "${key}" must have "href" and "label"`);
-			}
-			break;
-		case 'nav':
-			if (!Array.isArray(field.value)) {
-				throw new Error(`Field "${key}" must have "value" as an array`);
-			}
-			break;
-		case 'anchor':
-			if (typeof field.href !== 'string' || typeof field.label !== 'string') {
-				throw new Error(`Field "${key}" must have "href" and "label"`);
-			}
-			break;
-		case 'anchors':
-			if (!Array.isArray(field.value)) {
-				throw new Error(`Field "${key}" must have "value" as an array`);
-			}
-			break;
-		case 'array':
-			if (!Array.isArray(field.values)) {
-				throw new Error(`Field "${key}" must have "values" as an array`);
-			}
-			if (field.values.length === 0) {
-				throw new Error(`Field "${key}" must contain at least one item in "values"`);
-			}
-			field.values.forEach((item, index) => {
-				Object.keys(item).forEach((subKey) => {
-					validateField(`${subKey} in ${key}.variables[${index}]`, item[subKey]);
-				});
-			});
-			break;
-		default:
-			throw new Error(`Unknown type - ${type} in ${key}`);
-	}
-}
-
-function validateDefinition(content) {
-	const variables = content.variables;
-	Object.keys(variables).forEach((key) => {
-		validateField(key, variables[key]);
-	});
-}
-
-async function validateFileContent(filename, buffer, variables = null) {
+/**
+ * Validate specific file content
+ */
+async function validateFileContent(filename, buffer) {
 	const content = buffer.toString('utf-8');
+
 	switch (filename) {
 		case 'definition.json':
 			try {
-				const parsedContent = JSON.parse(content);
-				validateDefinition(parsedContent);
-				return parsedContent.variables;
+				JSON.parse(content);
 			} catch (error) {
 				if (error.name === 'SyntaxError') {
 					throw new Error(`File ${filename} contains invalid JSON: ${error.message}`);
@@ -135,21 +57,10 @@ async function validateFileContent(filename, buffer, variables = null) {
 				throw new Error(`File ${filename} cannot be empty`);
 			}
 
+			// Basic HTML validation
 			if (!content.includes('<') && !content.includes('>')) {
 				throw new Error(`File ${filename} does not appear to be valid HTML`);
 			}
-			const env = new nunjucks.Environment(null, {
-				throwOnUndefined: true,
-			});
-			try {
-				env.renderString(content, {
-					...variables,
-					_blockId: 0,
-				});
-			} catch (error) {
-				throw new Error(`Template has errors: ${error.message}`);
-			}
-
 			break;
 
 		case 'styles.scss':
@@ -197,15 +108,20 @@ async function validateFileContent(filename, buffer, variables = null) {
 	}
 }
 
+/**
+ * Extract and validate archive contents
+ */
 export async function extractAndValidate(buffer) {
 	try {
 		const zip = new AdmZip(buffer);
 		const zipEntries = zip.getEntries();
 
+		// Get file list from archive
 		const fileList = zipEntries
 			.filter((entry) => !entry.isDirectory)
 			.map((entry) => entry.entryName);
 
+		// Check for required files
 		const missingFiles = REQUIRED_FILES.filter(
 			(requiredFile) => !fileList.includes(requiredFile),
 		);
@@ -214,28 +130,16 @@ export async function extractAndValidate(buffer) {
 			throw new Error(`Missing required files: ${missingFiles.join(', ')}`);
 		}
 
+		// Extract and validate file contents
 		const extractedFiles = {};
 
-		const defEntry = zipEntries.find((e) => e.entryName === 'definition.json');
-		const defBuffer = defEntry.getData();
-		const defVariables = await validateFileContent('definition.json', defBuffer);
-
-		extractedFiles['definition.json'] = {
-			buffer: defBuffer,
-			size: defEntry.header.size,
-			name: 'definition.json',
-			content: defBuffer.toString('utf-8'),
-		};
-
 		for (const requiredFile of REQUIRED_FILES) {
-			if (requiredFile == 'definition.json') {
-				continue;
-			}
 			const entry = zipEntries.find((e) => e.entryName === requiredFile);
 			if (entry) {
 				const fileBuffer = entry.getData();
 
-				await validateFileContent(requiredFile, fileBuffer, defVariables);
+				// Validate file content
+				await validateFileContent(requiredFile, fileBuffer);
 
 				extractedFiles[requiredFile] = {
 					buffer: fileBuffer,
@@ -258,6 +162,9 @@ export async function extractAndValidate(buffer) {
 	}
 }
 
+/**
+ * Generate unique archive filename
+ */
 export function generateArchiveName(originalName) {
 	const randomId = randomBytes(8).toString('hex');
 	const ext = path.extname(originalName) || '.zip';
@@ -265,7 +172,9 @@ export function generateArchiveName(originalName) {
 	return `template_${cleanName}_${randomId}${ext}`;
 }
 
-
+/**
+ * Get file information for database
+ */
 export function getFileStats(files) {
 	const stats = {};
 
@@ -341,12 +250,14 @@ export async function quickValidate(buffer) {
 	}
 }
 
+// Export constants for external use
 export const archiveConstants = {
 	REQUIRED_FILES,
 	ALLOWED_EXTENSIONS,
 	MAX_FILE_SIZE,
 };
 
+// Default export for backward compatibility
 export default {
 	validateArchive,
 	extractAndValidate,
@@ -354,15 +265,7 @@ export default {
 	constants: archiveConstants,
 };
 
-export const replaceSiteZipWithNew = async (
-	sitePages,
-	siteName,
-	existingArchiveUrl,
-	zip,
-	sitemapXml,
-	sitemapError,
-	nginxConfig,
-) => {
+export const replaceSiteZipWithNew = async (sitePages, siteName, existingArchiveUrl, zip, sitemapXml, sitemapError, nginxConfig) => {
 	const zipEntries = zip.getEntries();
 
 	zipEntries.forEach((entry) => {
