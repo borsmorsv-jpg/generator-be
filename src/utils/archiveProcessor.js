@@ -246,7 +246,7 @@ export async function extractAndValidate(buffer) {
 			name: 'definition.json',
 			content: defBuffer.toString('utf-8'),
 		};
-
+		
 		for (const requiredFile of REQUIRED_FILES) {
 			if (requiredFile == 'definition.json') {
 				continue;

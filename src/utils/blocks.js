@@ -8,6 +8,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fal, openai } from '../lib/AiClients.js';
 
+nunjucks.configure({ autoescape: false });
+
 const generateImageWithFal = async (prompt, zip) => {
 	try {
 		const { data } = await fal.run('fal-ai/flux/schnell', {
@@ -333,14 +335,21 @@ const scopeCss = (scss, blockId) => {
 	}
 };
 
-const scopeHtml = (block, blockId, variables) => {
+const scopeHtml = (block, blockId, variables, isPreview = false) => {
 	try {
+		let updatedVars = JSON.parse(JSON.stringify(variables));
 		const fallbackHTML = `<div id="${blockId}" class="generation-block-error">Failed to render ${block.blockType}</div>`;
-
+		if(isPreview){
+			Object.values(updatedVars).forEach((value) => {
+				if(value && typeof value === 'object' && 'previewHtmlContent' in value){
+					value.htmlContent = value.previewHtmlContent
+				}
+			})
+		}
 		const result = block.hasError
 			? fallbackHTML
 			: nunjucks.renderString(block.html, {
-					...variables,
+					...updatedVars,
 					_blockId: blockId,
 				});
 		return `<!-- !HTML-BLOCK:${blockId}:START! -->${result}<!-- !HTML-BLOCK:${blockId}:END! -->`;
@@ -360,7 +369,7 @@ export const buildPageHtml = (page, globalCss, language, country, seo = {}, isPr
 			...block,
 			scopedCss: scopeCss(block.css, id),
 			html: scopeHtml(block, id, originalVariables),
-			previewHtml: scopeHtml(block, id, previewVariables),
+			previewHtml: scopeHtml(block, id, previewVariables, true),
 		};
 	});
 	const blocksHtml = filledBlocks.map((b) => b.html).join('\n');
@@ -857,20 +866,27 @@ export const transformToStructuredBlocks = (pages) => {
 					preparedBlock.css += "\n" + contentMatch.content.css;
 				}
 
-				return { level, key, data: blockData, templateHtml: contentMatch?.content?.html || "" };
+				return { level, key, rootKey, data: blockData, templateHtml: contentMatch?.content?.html || "" };
 			});
 
 			const sortedContainers = [...blockContainers].sort((a, b) => b.level - a.level);
 
 			sortedContainers.forEach(container => {
-				const blockId = `${container.key}${container.level}`;
+				const blockId = `${container.rootKey}${container.key}${container.level}`;
 				const renderedHtml = scopeHtml(
 					{ html: container.templateHtml, blockType: container.data.originalType },
 					blockId,
 					container.data.blockVars
 				);
+				const previewVars = replaceHrefWithHref64(container.data.blockVars);
+                const renderedPreviewHtml = scopeHtml(
+                    { html: container.templateHtml, blockType: container.data.originalType },
+                    blockId,
+                    previewVars
+                );
 
 				container.data.htmlContent = renderedHtml;
+				container.data.previewHtmlContent = renderedPreviewHtml;
 
 				if (container.level > 0) {
 					const parent = sortedContainers.find(p => 
@@ -883,6 +899,7 @@ export const transformToStructuredBlocks = (pages) => {
 							parent.data.blockVars[container.key] = {};
 						}
 						parent.data.blockVars[container.key].htmlContent = renderedHtml;
+						parent.data.blockVars[container.key].previewHtmlContent = renderedPreviewHtml;
 					}
 				}
 			});
@@ -901,6 +918,7 @@ export const transformToStructuredBlocks = (pages) => {
 							type: "block",
 							blockType: rootMatch.data.originalType,
 							htmlContent: rootMatch.data.htmlContent,
+							previewHtmlContent: rootMatch.data.previewHtmlContent,
 							variables: rootMatch.data.blockVars 
 						};
 					} else {
