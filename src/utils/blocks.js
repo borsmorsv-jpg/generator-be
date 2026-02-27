@@ -14,7 +14,6 @@ const generateImageWithFal = async (prompt, zip) => {
 	try {
 		const { data } = await fal.run('fal-ai/flux/schnell', {
 			input: {
-				// prompt: `TRANSPARENT PNG LOGO: ${prompt}. Minimalist, vector, solid colors, no background`,
 				prompt: prompt,
 				negative_prompt: 'background, text, gradient, shadow, realistic, photo',
 				image_size: 'square_hd',
@@ -339,12 +338,12 @@ const scopeHtml = (block, blockId, variables, isPreview = false) => {
 	try {
 		let updatedVars = JSON.parse(JSON.stringify(variables));
 		const fallbackHTML = `<div id="${blockId}" class="generation-block-error">Failed to render ${block.blockType}</div>`;
-		if(isPreview){
+		if (isPreview) {
 			Object.values(updatedVars).forEach((value) => {
-				if(value && typeof value === 'object' && 'previewHtmlContent' in value){
-					value.htmlContent = value.previewHtmlContent
+				if (value && typeof value === 'object' && 'previewHtmlContent' in value) {
+					value.htmlContent = value.previewHtmlContent;
 				}
-			})
+			});
 		}
 		const result = block.hasError
 			? fallbackHTML
@@ -623,16 +622,15 @@ function buildExpectedShape(variables) {
 		} else if (v?.type === 'anchors') {
 			out[name] = { value: [] };
 		} else if (v?.type === 'block') {
-			out[name] = {  
-                blockType: v.blockType || '...' 
-            };
+			out[name] = {
+				blockType: v.blockType || '...',
+			};
 		} else {
 			out[name] = { value: '...' };
 		}
 	}
 	return JSON.stringify(out, null, 2);
 }
-
 
 const getRandomAndRemove = (array, currentId, currentBlockIndex) => {
 	const filteredArray = array.filter(
@@ -642,185 +640,209 @@ const getRandomAndRemove = (array, currentId, currentBlockIndex) => {
 	if (filteredArray.length === 0) return { updatedArray: array, selectedItem: null };
 	const randomIndex = Math.floor(Math.random() * filteredArray.length);
 	const selectedItem = filteredArray[randomIndex];
-	const updatedArray = array.filter((item) => !(
-		item.block.id === selectedItem.block.id && item.blockIndex === selectedItem.blockIndex
-	));
+	const updatedArray = array.filter(
+		(item) =>
+			!(
+				item.block.id === selectedItem.block.id &&
+				item.blockIndex === selectedItem.blockIndex
+			),
+	);
 	return { updatedArray, selectedItem };
-}
-
-const getFreeBlocks = (blocks) => {
-	return blocks.map((block, blockIndex) => ({
-						block,
-						blockIndex,
-					}))
-					.filter(
-						(blockInfo) =>
-							blockInfo.block.category !== 'header' && blockInfo.block.category !== 'footer',
-					);
-} 
-
-export const fillAnchors = (pages, targetPage = '') => {
-	try{
-		return pages.map((page) => {
-				if (targetPage && page.filename !== targetPage) {
-					return page;
-				}
-
-				let freeBlocks = getFreeBlocks(page.blocks)
-				const startBlocksLength = freeBlocks.length;
-				const allAnchors = new Map();
-
-				const fillVars = (newBlock, key, result) => {
-						const href = `#${result.selectedItem.block.category}-${result.selectedItem.blockIndex}`;
-						const label = newBlock.variables[key].label;
-						newBlock.variables[key].href = href;
-						allAnchors.set(href, label);
-						freeBlocks = result.updatedArray;
-				}
-
-				const updatedBlocks = page.blocks.map((block, blockIndexGlobal) => {
-					let newBlock = JSON.parse(JSON.stringify(block));
-
-					if (startBlocksLength >= 1 && newBlock.definition.variables) {
-						Object.entries(newBlock.definition.variables).forEach(([key, values]) => {
-							if (values.type === 'anchor') {
-								if (!newBlock.variables[key]) {
-                                	return;
-                            	}
-								const isOnlyCurrentBlockLeft = freeBlocks.length === 1 && 
-									freeBlocks[0].block.id === newBlock.id && 
-									freeBlocks[0].blockIndex === blockIndexGlobal;
-								if(startBlocksLength > 1 && (isOnlyCurrentBlockLeft || freeBlocks.length === 0)){
-										freeBlocks = getFreeBlocks(page.blocks);
-								}
-
-								let result = getRandomAndRemove(freeBlocks, newBlock.id, blockIndexGlobal);
-
-								if(!result.selectedItem && startBlocksLength === 1){
-									newBlock.variables[key].href = "";
-									newBlock.variables[key].label = "";
-									return
-								}
-
-								fillVars(newBlock, key, result);
-							}
-						});
-					} 
-					return newBlock;
-				});
-				
-				const uniqueAnchorsList = Array.from(allAnchors.entries()).map(([href, label]) => ({
-					href,
-					label,
-				}));
-
-				updatedBlocks.forEach((block) => {
-					Object.entries(block.definition.variables).forEach(([key, val]) => {
-						if (val.type === 'anchors') {
-							block.variables[key].value = uniqueAnchorsList;
-						}
-					});
-				});
-
-				return { ...page, blocks: updatedBlocks };
-			});
-	} catch(err){
-		console.error("Error in fillAnchors function: ", err)
-		return pages
-	}
-	
 };
 
-export const expandedDefinition = async (blockDef, level = 0, rootVariables = {}, currentParent = null, maxLevel = 5, rootKey = "") => {
-    if (level > maxLevel) return { newVariables: rootVariables, usedKeys: [], contents: [] };
+const getFreeBlocks = (blocks) => {
+	return blocks
+		.map((block, blockIndex) => ({
+			block,
+			blockIndex,
+		}))
+		.filter(
+			(blockInfo) =>
+				blockInfo.block.category !== 'header' && blockInfo.block.category !== 'footer',
+		);
+};
 
-    if (level === 0) {
-        Object.assign(rootVariables, JSON.parse(JSON.stringify(blockDef.variables || {})));
-    }
+export const fillAnchors = (pages, targetPage = '') => {
+	try {
+		return pages.map((page) => {
+			if (targetPage && page.filename !== targetPage) {
+				return page;
+			}
 
-    let allUsedKeys = [];
-    let allContents = [];
+			let freeBlocks = getFreeBlocks(page.blocks);
+			const startBlocksLength = freeBlocks.length;
+			const allAnchors = new Map();
 
-    const currentVars = blockDef.variables || {};
-    const entries = Object.entries(currentVars).filter(([_, v]) => v.type === "block");
-
-    for (const [key, value] of entries) {
-		const currentRootKey = level === 0 ? key : rootKey;
-
-        allUsedKeys.push({ level, key, rootKey: currentRootKey });
-        const childBlockInfo = await getBlockByType(value.blockType);
-        
-        if (!childBlockInfo) {
-            console.warn(`[Warning] There no block for type: ${value.blockType}`);
-            continue;
-        }
-
-        let targetRef = (level === 0) ? rootVariables[key] : (currentParent ? currentParent[key] : null);
-        if (!targetRef) continue;
-
-        targetRef.block = {}; 
-        
-		allContents.push({
-            level,
-            key,
-            content: { html: childBlockInfo.html, css: childBlockInfo.css }
-        });
-
-        const childVars = childBlockInfo.definition.variables || {};
-        
-        for (const [cKey, cValue] of Object.entries(childVars)) {
-            if (cValue.type !== "block") {
-                const flatName = `${cKey}${currentRootKey}${key}${level}`;
-                rootVariables[flatName] = JSON.parse(JSON.stringify(cValue));
-            }
-        }
-
-        const nextInnerBlocks = Object.entries(childVars).filter(([_, v]) => v.type === "block");
-
-        if (nextInnerBlocks.length > 0) {
-           const [firstInnerKey, firstInnerValue] = nextInnerBlocks[0];
-
-			targetRef.block = {
-				[firstInnerKey]: JSON.parse(JSON.stringify(firstInnerValue))
+			const fillVars = (newBlock, key, result) => {
+				const href = `#${result.selectedItem.block.category}-${result.selectedItem.blockIndex}`;
+				const label = newBlock.variables[key].label;
+				newBlock.variables[key].href = href;
+				allAnchors.set(href, label);
+				freeBlocks = result.updatedArray;
 			};
 
-            const res = await expandedDefinition(
-                childBlockInfo.definition,
-                level + 1,
-                rootVariables,
-                targetRef.block, 
-                maxLevel,
-				currentRootKey
-            );
+			const updatedBlocks = page.blocks.map((block, blockIndexGlobal) => {
+				let newBlock = JSON.parse(JSON.stringify(block));
 
-            allUsedKeys = [...allUsedKeys, ...res.usedKeys];
-            allContents = [...allContents, ...res.contents];
-        }
+				if (startBlocksLength >= 1 && newBlock.definition.variables) {
+					Object.entries(newBlock.definition.variables).forEach(([key, values]) => {
+						if (values.type === 'anchor') {
+							if (!newBlock.variables[key]) {
+								return;
+							}
+							const isOnlyCurrentBlockLeft =
+								freeBlocks.length === 1 &&
+								freeBlocks[0].block.id === newBlock.id &&
+								freeBlocks[0].blockIndex === blockIndexGlobal;
+							if (
+								startBlocksLength > 1 &&
+								(isOnlyCurrentBlockLeft || freeBlocks.length === 0)
+							) {
+								freeBlocks = getFreeBlocks(page.blocks);
+							}
 
-        if (level > 0) break;
-    }
+							let result = getRandomAndRemove(
+								freeBlocks,
+								newBlock.id,
+								blockIndexGlobal,
+							);
 
-    return { newVariables: rootVariables, usedKeys: allUsedKeys, contents: allContents };
+							if (!result.selectedItem && startBlocksLength === 1) {
+								newBlock.variables[key].href = '';
+								newBlock.variables[key].label = '';
+								return;
+							}
+
+							fillVars(newBlock, key, result);
+						}
+					});
+				}
+				return newBlock;
+			});
+
+			const uniqueAnchorsList = Array.from(allAnchors.entries()).map(([href, label]) => ({
+				href,
+				label,
+			}));
+
+			updatedBlocks.forEach((block) => {
+				Object.entries(block.definition.variables).forEach(([key, val]) => {
+					if (val.type === 'anchors') {
+						block.variables[key].value = uniqueAnchorsList;
+					}
+				});
+			});
+
+			return { ...page, blocks: updatedBlocks };
+		});
+	} catch (err) {
+		console.error('Error in fillAnchors function: ', err);
+		return pages;
+	}
+};
+
+export const expandedDefinition = async (
+	blockDef,
+	level = 0,
+	rootVariables = {},
+	currentParent = null,
+	maxLevel = 5,
+	rootKey = '',
+) => {
+	if (level > maxLevel) return { newVariables: rootVariables, usedKeys: [], contents: [] };
+
+	if (level === 0) {
+		Object.assign(rootVariables, JSON.parse(JSON.stringify(blockDef.variables || {})));
+	}
+
+	let allUsedKeys = [];
+	let allContents = [];
+
+	const currentVars = blockDef.variables || {};
+	const entries = Object.entries(currentVars).filter(([_, v]) => v.type === 'block');
+
+	for (const [key, value] of entries) {
+		const currentRootKey = level === 0 ? key : rootKey;
+
+		allUsedKeys.push({ level, key, rootKey: currentRootKey });
+		const childBlockInfo = await getBlockByType(value.blockType);
+
+		if (!childBlockInfo) {
+			console.warn(`[Warning] There no block for type: ${value.blockType}`);
+			continue;
+		}
+
+		let targetRef =
+			level === 0 ? rootVariables[key] : currentParent ? currentParent[key] : null;
+		if (!targetRef) continue;
+
+		targetRef.block = {};
+
+		allContents.push({
+			level,
+			key,
+			content: { html: childBlockInfo.html, css: childBlockInfo.css },
+		});
+
+		const childVars = childBlockInfo.definition.variables || {};
+
+		for (const [cKey, cValue] of Object.entries(childVars)) {
+			if (cValue.type !== 'block') {
+				const flatName = `${cKey}${currentRootKey}${key}${level}`;
+				rootVariables[flatName] = JSON.parse(JSON.stringify(cValue));
+			}
+		}
+
+		const nextInnerBlocks = Object.entries(childVars).filter(([_, v]) => v.type === 'block');
+
+		if (nextInnerBlocks.length > 0) {
+			const [firstInnerKey, firstInnerValue] = nextInnerBlocks[0];
+
+			targetRef.block = {
+				[firstInnerKey]: JSON.parse(JSON.stringify(firstInnerValue)),
+			};
+
+			const res = await expandedDefinition(
+				childBlockInfo.definition,
+				level + 1,
+				rootVariables,
+				targetRef.block,
+				maxLevel,
+				currentRootKey,
+			);
+
+			allUsedKeys = [...allUsedKeys, ...res.usedKeys];
+			allContents = [...allContents, ...res.contents];
+		}
+
+		if (level > 0) break;
+	}
+
+	return { newVariables: rootVariables, usedKeys: allUsedKeys, contents: allContents };
 };
 
 export const transformToStructuredBlocks = (pages) => {
-    return pages.map((page) => {
+	return pages.map((page) => {
 		const newBlocks = page.blocks.map((preparedBlock) => {
-			if(preparedBlock.isGlobal){
-				return preparedBlock
+			if (preparedBlock.isGlobal) {
+				return preparedBlock;
 			}
 			const additionalInfo = preparedBlock.additionalInfo;
-			if(!additionalInfo || additionalInfo.usedKeys.length === 0 || additionalInfo.contents.length === 0){
-				return preparedBlock
+			if (
+				!additionalInfo ||
+				additionalInfo.usedKeys.length === 0 ||
+				additionalInfo.contents.length === 0
+			) {
+				return preparedBlock;
 			}
-			const {usedKeys, contents} = additionalInfo;
+			const { usedKeys, contents } = additionalInfo;
 			const variables = preparedBlock.variables;
-			const allSuffixes = usedKeys.map(uk => `${uk.rootKey}${uk.key}${uk.level}`);
+			const allSuffixes = usedKeys.map((uk) => `${uk.rootKey}${uk.key}${uk.level}`);
 			const blockContainers = usedKeys.map(({ level, key, rootKey }) => {
 				const suffix = `${rootKey}${key}${level}`;
 				const blockData = { blockVars: {} };
 
-				Object.keys(variables).forEach(fullKey => {
+				Object.keys(variables).forEach((fullKey) => {
 					if (fullKey.endsWith(suffix)) {
 						let realVarName = fullKey.slice(0, -suffix.length);
 						if (realVarName.endsWith(key) && realVarName !== key) {
@@ -828,16 +850,18 @@ export const transformToStructuredBlocks = (pages) => {
 						}
 
 						if (realVarName) {
-							blockData.blockVars[realVarName] = JSON.parse(JSON.stringify(variables[fullKey]));
+							blockData.blockVars[realVarName] = JSON.parse(
+								JSON.stringify(variables[fullKey]),
+							);
 						}
 					}
 				});
 
-				let originalVar = preparedBlock.definition?.variables?.[rootKey];;
+				let originalVar = preparedBlock.definition?.variables?.[rootKey];
 
-				if(level !== 0){
+				if (level !== 0) {
 					for (let i = 1; i <= level; i++) {
-						const step = usedKeys.find(uk => uk.level === i);
+						const step = usedKeys.find((uk) => uk.level === i);
 						if (step && originalVar?.block?.[step.key]) {
 							originalVar = originalVar.block[step.key];
 						} else {
@@ -846,52 +870,59 @@ export const transformToStructuredBlocks = (pages) => {
 						}
 					}
 				}
-			
+
 				blockData.originalType = originalVar?.blockType;
 
 				if (originalVar?.block && typeof originalVar.block === 'object') {
-					Object.keys(originalVar.block).forEach(subKey => {
+					Object.keys(originalVar.block).forEach((subKey) => {
 						let cleanSubKey = subKey;
 						if (cleanSubKey.endsWith(key) && cleanSubKey !== key) {
 							cleanSubKey = cleanSubKey.slice(0, -key.length);
 						}
 						if (!blockData.blockVars[cleanSubKey]) {
-							blockData.blockVars[cleanSubKey] = { type: "block" };
+							blockData.blockVars[cleanSubKey] = { type: 'block' };
 						}
 					});
 				}
 
-				const contentMatch = contents.find(c => c.level === level && c.key === key);
+				const contentMatch = contents.find((c) => c.level === level && c.key === key);
 				if (contentMatch?.content?.css) {
-					preparedBlock.css += "\n" + contentMatch.content.css;
+					preparedBlock.css += '\n' + contentMatch.content.css;
 				}
 
-				return { level, key, rootKey, data: blockData, templateHtml: contentMatch?.content?.html || "" };
+				return {
+					level,
+					key,
+					rootKey,
+					data: blockData,
+					templateHtml: contentMatch?.content?.html || '',
+				};
 			});
 
 			const sortedContainers = [...blockContainers].sort((a, b) => b.level - a.level);
 
-			sortedContainers.forEach(container => {
+			sortedContainers.forEach((container) => {
 				const blockId = `${container.rootKey}${container.key}${container.level}`;
 				const renderedHtml = scopeHtml(
 					{ html: container.templateHtml, blockType: container.data.originalType },
 					blockId,
-					container.data.blockVars
+					container.data.blockVars,
 				);
 				const previewVars = replaceHrefWithHref64(container.data.blockVars);
-                const renderedPreviewHtml = scopeHtml(
-                    { html: container.templateHtml, blockType: container.data.originalType },
-                    blockId,
-                    previewVars
-                );
+				const renderedPreviewHtml = scopeHtml(
+					{ html: container.templateHtml, blockType: container.data.originalType },
+					blockId,
+					previewVars,
+				);
 
 				container.data.htmlContent = renderedHtml;
 				container.data.previewHtmlContent = renderedPreviewHtml;
 
 				if (container.level > 0) {
-					const parent = sortedContainers.find(p => 
-						p.level === container.level - 1 && 
-						p.data.blockVars.hasOwnProperty(container.key)
+					const parent = sortedContainers.find(
+						(p) =>
+							p.level === container.level - 1 &&
+							p.data.blockVars.hasOwnProperty(container.key),
 					);
 
 					if (parent) {
@@ -899,35 +930,36 @@ export const transformToStructuredBlocks = (pages) => {
 							parent.data.blockVars[container.key] = {};
 						}
 						parent.data.blockVars[container.key].htmlContent = renderedHtml;
-						parent.data.blockVars[container.key].previewHtmlContent = renderedPreviewHtml;
+						parent.data.blockVars[container.key].previewHtmlContent =
+							renderedPreviewHtml;
 					}
 				}
 			});
 
-		const result = {};
+			const result = {};
 
-			Object.keys(variables).forEach(key => {
-				const isSuffixed = allSuffixes.some(s => key.endsWith(s));
-				
+			Object.keys(variables).forEach((key) => {
+				const isSuffixed = allSuffixes.some((s) => key.endsWith(s));
+
 				if (!isSuffixed) {
 					const originalVar = variables[key];
-					const rootMatch = sortedContainers.find(c => c.level === 0 && c.key === key);
-					
+					const rootMatch = sortedContainers.find((c) => c.level === 0 && c.key === key);
+
 					if (rootMatch) {
 						result[key] = {
-							type: "block",
+							type: 'block',
 							blockType: rootMatch.data.originalType,
 							htmlContent: rootMatch.data.htmlContent,
 							previewHtmlContent: rootMatch.data.previewHtmlContent,
-							variables: rootMatch.data.blockVars 
+							variables: rootMatch.data.blockVars,
 						};
 					} else {
 						result[key] = JSON.parse(JSON.stringify(originalVar));
 					}
 				}
 			});
-		return { ...preparedBlock, variables: result };
-	})
-	return {...page, blocks: newBlocks}
-	})
+			return { ...preparedBlock, variables: result };
+		});
+		return { ...page, blocks: newBlocks };
+	});
 };

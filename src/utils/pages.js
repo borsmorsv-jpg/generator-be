@@ -189,7 +189,6 @@ If these rules are violated, the response is considered INVALID`,
 			},
 		};
 	} catch (error) {
-		console.log('error', error);
 		const fallbackPages = pages.map((page, index) => {
 			const isHome = index === 0;
 			const title = isHome ? 'Home' : page?.title || `Page ${index + 1}`;

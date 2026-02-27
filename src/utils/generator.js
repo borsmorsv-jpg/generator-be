@@ -68,8 +68,12 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 						};
 					} else {
 						const block = await getBlockByType(blockDef.type);
-						const {newVariables: newVars, usedKeys, contents} = await expandedDefinition(block.definition);
-						const expandedBlock = {...block, definition: {variables: newVars} }
+						const {
+							newVariables: newVars,
+							usedKeys,
+							contents,
+						} = await expandedDefinition(block.definition);
+						const expandedBlock = { ...block, definition: { variables: newVars } };
 						const preparedBlock = await prepareBlock(
 							expandedBlock,
 							prompt,
@@ -89,8 +93,8 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 							...preparedBlock,
 							additionalInfo: {
 								usedKeys,
-								contents
-							}
+								contents,
+							},
 						};
 					}
 				} catch (error) {

@@ -58,7 +58,6 @@ export const createSite = async (request, reply) => {
 		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, tempDomain);
 		const nginxConfig = generateNginxConfig({ serverName: domain });
 
-		// const zip = new AdmZip();
 		sitePages.forEach((page) => {
 			zip.addFile(page.filename, Buffer.from(page.html, 'utf8'));
 		});
@@ -124,7 +123,6 @@ export const createSite = async (request, reply) => {
 			success: true,
 		});
 	} catch (error) {
-		console.log('error', error);
 		return reply.status(500).send({ error: error.message });
 	}
 };
@@ -425,7 +423,6 @@ export const regenerateSite = async (request, reply) => {
 			success: true,
 		});
 	} catch (err) {
-		console.log('err', err);
 		reply.status(500).send({
 			error: err.message,
 			success: false,
@@ -485,8 +482,12 @@ export const regenerateBlock = async (request, reply) => {
 			tokensInfo.totalFalCost += preparedBlock.tokens.totalFalCost;
 			generatedBlock = preparedBlock;
 		} else {
-			const {newVariables: newVars, usedKeys, contents} = await expandedDefinition(block.definition);
-			const expandedBlock = {...block, definition: {variables: newVars} }
+			const {
+				newVariables: newVars,
+				usedKeys,
+				contents,
+			} = await expandedDefinition(block.definition);
+			const expandedBlock = { ...block, definition: { variables: newVars } };
 			const preparedBlock = await prepareBlock(
 				expandedBlock,
 				site.prompt || prompt,
@@ -501,7 +502,7 @@ export const regenerateBlock = async (request, reply) => {
 			tokensInfo.totalTokens += preparedBlock.tokens.totalTokens;
 			tokensInfo.totalFalCost += preparedBlock.tokens.totalFalCost;
 
-			generatedBlock = {...preparedBlock, additionalInfo: {usedKeys, contents}};
+			generatedBlock = { ...preparedBlock, additionalInfo: { usedKeys, contents } };
 		}
 
 		const updatedPages = site.siteConfigDetailed?.pages?.map((page) => {
@@ -530,19 +531,19 @@ export const regenerateBlock = async (request, reply) => {
 							hasError: false,
 							css: generatedBlock.css,
 							html: generatedBlock.html,
-							additionalInfo: generatedBlock.additionalInfo
+							additionalInfo: generatedBlock.additionalInfo,
 						};
 					}
-					
+
 					return {
-							...block,
-							id: block.blockId,
-							category: block.blockType,
-							additionalInfo: {
-								usedKeys: [],
-								contents: []
-							}
-						};
+						...block,
+						id: block.blockId,
+						category: block.blockType,
+						additionalInfo: {
+							usedKeys: [],
+							contents: [],
+						},
+					};
 				}),
 			};
 		});
@@ -555,7 +556,6 @@ export const regenerateBlock = async (request, reply) => {
 			site.siteConfigDetailed.generatedTheme,
 			site.language,
 			site.country,
-			// site.siteConfigDetailed.seoPages,
 		);
 
 		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, site.domain);
@@ -580,7 +580,6 @@ export const regenerateBlock = async (request, reply) => {
 				blocks: page.blocks,
 			})),
 			generatedTheme: site.siteConfigDetailed.generatedTheme,
-			// seoPages: site.siteConfigDetailed.seoPages,
 		};
 		const inputPrice =
 			tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS_OPENAI.input / 1000000);
@@ -628,7 +627,6 @@ export const regenerateBlock = async (request, reply) => {
 			success: true,
 		});
 	} catch (err) {
-		console.log('error', err);
 		reply.status(500).send({
 			error: err.message,
 			success: false,
