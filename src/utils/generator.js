@@ -238,7 +238,7 @@ export const generateSitemapXml = (sitePages, domain = 'http://localhost:3000') 
 						if (!obj || typeof obj !== 'object') return;
 						if (obj.href && (obj.type === 'image' || obj.alt)) {
 							imageUrls.push({
-								loc: domain + obj.href,
+								loc: baseUrl + obj.href,
 								caption: obj.alt || obj.value || '',
 							});
 						}
