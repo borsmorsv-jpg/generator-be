@@ -15,7 +15,12 @@ import {
 	transformToStructuredBlocks,
 } from '../../utils/blocks.js';
 import { filteredZip, replaceSiteZipWithNew } from '../../utils/archiveProcessor.js';
-import { generateNginxConfig, generateSite, generateSitemapXml } from '../../utils/generator.js';
+import {
+	generateNginxConfig,
+	generateRobotsTxt,
+	generateSite,
+	generateSitemapXml,
+} from '../../utils/generator.js';
 import Decimal from 'decimal.js';
 
 function cutNumber(number, amountAfterDot) {
@@ -54,9 +59,9 @@ export const createSite = async (request, reply) => {
 			zip,
 		});
 
-		let tempDomain = 'http://localhost:3000';
-		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, tempDomain);
+		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, domain);
 		const nginxConfig = generateNginxConfig({ serverName: domain });
+		const robotsTxt = generateRobotsTxt(domain);
 
 		sitePages.forEach((page) => {
 			zip.addFile(page.filename, Buffer.from(page.html, 'utf8'));
@@ -68,6 +73,10 @@ export const createSite = async (request, reply) => {
 
 		if (nginxConfig) {
 			zip.addFile('nginx.conf', Buffer.from(nginxConfig, 'utf8'));
+		}
+
+		if (robotsTxt) {
+			zip.addFile('robots.txt', Buffer.from(robotsTxt, 'utf8'));
 		}
 
 		const zipBuffer = zip.toBuffer();

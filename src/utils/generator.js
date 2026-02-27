@@ -238,7 +238,7 @@ export const generateSitemapXml = (sitePages, domain = 'http://localhost:3000') 
 						if (!obj || typeof obj !== 'object') return;
 						if (obj.href && (obj.type === 'image' || obj.alt)) {
 							imageUrls.push({
-								loc: obj.href,
+								loc: domain + obj.href,
 								caption: obj.alt || obj.value || '',
 							});
 						}
@@ -312,4 +312,21 @@ export const generateNginxConfig = ({ serverName, rootDir } = {}) => {
 		try_files $uri $uri/ $uri.html /index.html;
 	}
 }`;
+};
+
+export const generateRobotsTxt = (domain) => {
+	try {
+		if (!domain) {
+			throw new Error('To create robots.txt we need to have domain');
+		}
+
+		const cleanDomain = domain.replace(/\/$/, '');
+
+		const lines = ['User-agent: *', 'Allow: /', '', `Sitemap: ${cleanDomain}/sitemap.xml`];
+
+		return lines.join('\n');
+	} catch (err) {
+		console.warn(err);
+		return null;
+	}
 };
