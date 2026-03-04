@@ -19,6 +19,7 @@ export const getAllBlocks = async (request, reply) => {
 			createdBy,
 			updatedBy,
 			createdAtFrom,
+			isReusableAsChildren,
 			createdAtTo,
 			updatedAtFrom,
 			updatedAtTo,
@@ -62,8 +63,14 @@ export const getAllBlocks = async (request, reply) => {
 
 		if (isActive === 'true') {
 			filters.push(eq(blocks.isActive, true));
-		} else if (isActive === 'false') {
+		} else {
 			filters.push(eq(blocks.isActive, false));
+		}
+
+		if (isReusableAsChildren === 'true') {
+			filters.push(eq(blocks.isReusableAsChildren, true));
+		} else {
+			filters.push(eq(blocks.isReusableAsChildren, false));
 		}
 
 		const order = (column) => (sortOrder === 'asc' ? asc(column) : desc(column));
