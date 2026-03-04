@@ -936,6 +936,7 @@ export const transformToStructuredBlocks = (pages) => {
 					{ html: container.templateHtml, blockType: container.data.originalType },
 					blockId,
 					previewVars,
+					true,
 				);
 
 				container.data.htmlContent = renderedHtml;
