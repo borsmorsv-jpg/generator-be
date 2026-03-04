@@ -108,6 +108,7 @@ export const createSite = async (request, reply) => {
 				archiveUrl: urlData.publicUrl,
 				country: country,
 				language: language,
+				domain: domain,
 				definition: template.id,
 				prompt: prompt,
 				totalFalPrice: tokens.totalFalCost,
@@ -126,7 +127,6 @@ export const createSite = async (request, reply) => {
 		return reply.status(201).send({
 			data: {
 				...siteData,
-				domain,
 				previews,
 				siteConfig,
 				siteConfigDetailed,
