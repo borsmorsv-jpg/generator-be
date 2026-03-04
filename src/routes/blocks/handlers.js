@@ -63,13 +63,13 @@ export const getAllBlocks = async (request, reply) => {
 
 		if (isActive === 'true') {
 			filters.push(eq(blocks.isActive, true));
-		} else {
+		} else if (isActive === 'false') {
 			filters.push(eq(blocks.isActive, false));
 		}
 
 		if (isReusableAsChildren === 'true') {
 			filters.push(eq(blocks.isReusableAsChildren, true));
-		} else {
+		} else if (isReusableAsChildren === 'false') {
 			filters.push(eq(blocks.isReusableAsChildren, false));
 		}
 
