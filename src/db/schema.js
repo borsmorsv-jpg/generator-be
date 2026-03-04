@@ -62,6 +62,7 @@ export const sites = pgTable('sites', {
 	isDraft: boolean('is_draft').default(true).notNull(),
 	isActive: boolean('is_active').default(true).notNull(),
 	trafficSource: varchar('traffic_source', { length: 255 }).notNull(),
+	domain: varchar('domain', { length: 255 }).notNull(),
 	country: varchar('country', { length: 255 }).notNull(),
 	language: varchar('language', { length: 255 }).notNull(),
 	archiveUrl: varchar('archive_url', { length: 1024 }).notNull(),
