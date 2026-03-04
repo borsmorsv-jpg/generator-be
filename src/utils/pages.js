@@ -38,18 +38,21 @@ CRITICAL PATH AND TITLE RULES:
 }
 
 SEO CONTENT RULES:
-1. All SEO fields (title, description, keywords, ogTitle, ogDescription) must be in ${language}
-2. Content must be relevant to business topic: "${prompt}"
-3. Consider ${country} audience preferences
-4. Character limits: title=50-60, description=150-160
-5. Page titles must be in English
-6. Generate realistic, engaging content
+1. Generate a realistic, catchy, and contextually relevant "brandName" based on the business topic: "${prompt}". It must make sense for the industry and NOT be a generic or confusing placeholder.
+2. All SEO fields (title, description, keywords, ogTitle, ogDescription) must be in ${language}
+3. Include the generated "brandName" naturally within the SEO titles (e.g., "Page Topic | BrandName") and descriptions.
+4. Content must be highly relevant to business topic: "${prompt}"
+5. Consider ${country} audience preferences
+6. Character limits: title=50-60, description=150-160
+7. Page titles (pageTitle field) must be in English
+8. Generate realistic, engaging content
 
 OUTPUT FORMAT CONTRACT (MANDATORY):
 
 You MUST ALWAYS return a SINGLE JSON OBJECT with the following exact structure:
 
 {
+  "brandName": "Generated context-relevant brand name in ${language}",
   "pages": [
     {
       "pagePath": "string starting with /",
@@ -67,7 +70,7 @@ You MUST ALWAYS return a SINGLE JSON OBJECT with the following exact structure:
 
 STRICT RULES:
 1. The root JSON element MUST be an OBJECT, not an array.
-2. The root object MUST contain ONLY the "pages" field.
+2. The root object MUST contain ONLY the "brandName" and "pages" fields.
 3. "pages" MUST ALWAYS be an array, even if there is only one page.
 4. NEVER return a raw array as the root element.
 5. NEVER include any additional fields (no metadata, no explanations).
@@ -96,7 +99,6 @@ If these rules are violated, the response is considered INVALID`,
 		}
 
 		const result = JSON.parse(jsonMatch[0]);
-
 		const normalizePathAndTitle = (item, index) => {
 			let pagePath = item.pagePath || '';
 			let pageTitle = item.pageTitle || '';
@@ -153,6 +155,7 @@ If these rules are violated, the response is considered INVALID`,
 
 		if (pageCount === 1) {
 			return {
+				brandName: result.brandName,
 				pages: [
 					{
 						...(pages[0] || {}),
@@ -180,6 +183,7 @@ If these rules are violated, the response is considered INVALID`,
 		}));
 
 		return {
+			brandName: result.brandName,
 			pages: populatedPages,
 			hasError: false,
 			tokens: {

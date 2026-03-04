@@ -74,6 +74,7 @@ export const getAllBlocks = async (request, reply) => {
 				name: blocks.name,
 				category: blocks.category,
 				isActive: blocks.isActive,
+				isReusableAsChildren: blocks.isReusableAsChildren,
 				archiveUrl: blocks.archiveUrl,
 				definition: blocks.definition,
 				createdAt: blocks.createdAt,
@@ -123,6 +124,7 @@ export const createBlock = async (request, reply) => {
 	try {
 		const fileData = request.body.file;
 		const isActive = request.body.isActive?.value === 'true';
+		const isReusableAsChildren = request.body.isReusableAsChildren?.value === 'true';
 		const name = request.body.name?.value;
 		const category = request.body.category?.value;
 		const description = request.body.description?.value;
@@ -167,6 +169,7 @@ export const createBlock = async (request, reply) => {
 			.values({
 				name,
 				isActive,
+				isReusableAsChildren,
 				category,
 				archiveUrl,
 				description,

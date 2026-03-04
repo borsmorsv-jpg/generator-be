@@ -81,16 +81,26 @@ const processImages = async (content, variables, zip) => {
 	return { content, totalFalCost };
 };
 
-export const getBlockByType = async (type) => {
+export const getBlockByType = async (type, isReusable = false) => {
+	const conditions = [
+        eq(blocks.category, type),
+        eq(blocks.isActive, true)
+    ];
+
+    if (isReusable) {
+        conditions.push(eq(blocks.isReusableAsChildren, isReusable));
+    }
+
 	const [block] = await db
 		.select()
 		.from(blocks)
-		.where(and(eq(blocks.category, type), eq(blocks.isActive, true)))
+		.where(and(...conditions))
 		.orderBy(sql`RANDOM()`)
 		.limit(1);
 
 	if (!block) {
-		throw new Error(`No active block found for type: ${type}`);
+		const reusableText = isReusable ? ` (isReusableAsChildren: ${isReusable})` : '';
+		throw new Error(`No active block found for type: ${type}${reusableText}`);
 	}
 
 	const unzippedBlock = await downloadAndUnzipBlock(block.archiveUrl);
@@ -321,13 +331,15 @@ export const prepareGlobalBlocks = async (
 
 const scopeCss = (scss, blockId) => {
 	try {
-		const replacedScss = scss.replace(/#_blockId/g, `#${blockId}`);
-		const result = sass.compileString(replacedScss);
-		return `
-			/*!CSS-BLOCK:${blockId}:START!*/
-				${result.css}
-			/*!CSS-BLOCK:${blockId}:END!*/
-		`;
+		if(scss){
+			const replacedScss = scss.replace(/#_blockId/g, `#${blockId}`);
+			const result = sass.compileString(replacedScss);
+			return `
+				/*!CSS-BLOCK:${blockId}:START!*/
+					${result.css}
+				/*!CSS-BLOCK:${blockId}:END!*/
+			`;
+		}
 	} catch (error) {
 		console.error(`${blockId}:`, error);
 		return scss;
@@ -336,15 +348,18 @@ const scopeCss = (scss, blockId) => {
 
 const scopeHtml = (block, blockId, variables, isPreview = false) => {
 	try {
-		let updatedVars = JSON.parse(JSON.stringify(variables));
-		const fallbackHTML = `<div id="${blockId}" class="generation-block-error">Failed to render ${block.blockType}</div>`;
-		if (isPreview) {
+		let updatedVars = null;
+		if(!block.hasError){
+			updatedVars = JSON.parse(JSON.stringify(variables));
+			if (isPreview) {
 			Object.values(updatedVars).forEach((value) => {
 				if (value && typeof value === 'object' && 'previewHtmlContent' in value) {
 					value.htmlContent = value.previewHtmlContent;
 				}
 			});
 		}
+		}
+		const fallbackHTML = `<div id="${blockId}" class="generation-block-error">Failed to render ${block.blockType}</div>`;
 		const result = block.hasError
 			? fallbackHTML
 			: nunjucks.renderString(block.html, {
@@ -625,7 +640,13 @@ function buildExpectedShape(variables) {
 			out[name] = {
 				blockType: v.blockType || '...',
 			};
-		} else {
+		} else if (v?.type === 'brandName') {
+			out[name] = {
+				type: "brandName",
+				value: '...' 
+			};
+		}
+		else {
 			out[name] = { value: '...' };
 		}
 	}
@@ -682,6 +703,7 @@ export const fillAnchors = (pages, targetPage = '') => {
 			};
 
 			const updatedBlocks = page.blocks.map((block, blockIndexGlobal) => {
+				if(block.hasError) return block;
 				let newBlock = JSON.parse(JSON.stringify(block));
 
 				if (startBlocksLength >= 1 && newBlock.definition.variables) {
@@ -726,6 +748,7 @@ export const fillAnchors = (pages, targetPage = '') => {
 			}));
 
 			updatedBlocks.forEach((block) => {
+				if(block.hasError) return;
 				Object.entries(block.definition.variables).forEach(([key, val]) => {
 					if (val.type === 'anchors') {
 						block.variables[key].value = uniqueAnchorsList;
@@ -765,7 +788,7 @@ export const expandedDefinition = async (
 		const currentRootKey = level === 0 ? key : rootKey;
 
 		allUsedKeys.push({ level, key, rootKey: currentRootKey });
-		const childBlockInfo = await getBlockByType(value.blockType);
+		const childBlockInfo = await getBlockByType(value.blockType, true);
 
 		if (!childBlockInfo) {
 			console.warn(`[Warning] There no block for type: ${value.blockType}`);
@@ -962,4 +985,44 @@ export const transformToStructuredBlocks = (pages) => {
 		});
 		return { ...page, blocks: newBlocks };
 	});
+};
+
+export const fillBrandName = (input, brandName) => {
+    const processBlock = (block) => {
+        if (block.hasError) return block;
+        const targetKeys = Object.keys(block.variables).filter((key) => 
+            block.variables[key].type === "brandName"
+        );
+
+        if (targetKeys.length === 0) return block;
+
+        const updatedVariables = { ...block.variables };
+        targetKeys.forEach((key) => {
+            updatedVariables[key] = {
+                value: brandName
+            };
+        });
+
+        return {
+            ...block,
+            variables: updatedVariables
+        };
+    };
+
+    if (Array.isArray(input)) {
+        return input.map((item) => {
+            if (item.blocks && Array.isArray(item.blocks)) {
+                return {
+                    ...item,
+                    blocks: item.blocks.map(processBlock)
+                };
+            }
+            return processBlock(item);
+        });
+    }
+
+    if (typeof input === 'object') {
+        return processBlock(input);
+    }
+    return input;
 };

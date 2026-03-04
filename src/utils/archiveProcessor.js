@@ -15,6 +15,7 @@ const ALLOWED_KEYS = {
 	anchor: ['type', 'href', 'label'],
 	anchors: ['type', 'value'],
 	block: ['type', 'blockType'],
+	brandName: ['type', 'value']
 };
 
 const ALLOWED_EXTENSIONS = ['.zip'];
@@ -96,6 +97,11 @@ function validateField(key, field) {
 		case 'block':
 			if (typeof field.blockType !== 'string') {
 				throw new Error(`Field "${key}" must have "value" as an array`);
+			}
+			break;
+		case 'brandName':
+			if (typeof field.value !== 'string') {
+				throw new Error(`Field "${key}" must have "value"`);
 			}
 			break;
 		case 'array':
@@ -379,6 +385,7 @@ export const replaceSiteZipWithNew = async (
 	sitemapXml,
 	sitemapError,
 	nginxConfig,
+	robotsTxt
 ) => {
 	const zipEntries = zip.getEntries();
 
@@ -399,6 +406,10 @@ export const replaceSiteZipWithNew = async (
 
 	if (nginxConfig) {
 		zip.addFile('nginx.conf', Buffer.from(nginxConfig, 'utf8'));
+	}
+
+	if (robotsTxt) {
+		zip.addFile('robots.txt', Buffer.from(robotsTxt, 'utf8'));
 	}
 
 	const zipBuffer = zip.toBuffer();

@@ -2,6 +2,7 @@ import {
 	buildSitePages,
 	expandedDefinition,
 	fillAnchors,
+	fillBrandName,
 	flatPageBlocks,
 	generateTheme,
 	getBlockByType,
@@ -133,7 +134,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 		};
 	};
 
-	const { pages: generatedPages, tokens: seoTokens } = await generatePagesWithAI({
+	const { brandName, pages: generatedPages, tokens: seoTokens } = await generatePagesWithAI({
 		prompt,
 		pages: template.definition.pages,
 		country,
@@ -168,10 +169,12 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 	const openAiOutputPrice =
 		tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS_OPENAI.output / 1000000);
 	const openAiTotalPrice = openAiInputPrice + openAiOutputPrice;
-	const updatedPagesWithAnchors = fillAnchors(pages);
+	const updatedPagesWithBrandName = fillBrandName(pages, brandName)
+	const updatedPagesWithAnchors = fillAnchors(updatedPagesWithBrandName);
 	const blocksCollection = transformToStructuredBlocks(updatedPagesWithAnchors);
 	const sitePages = buildSitePages(blocksCollection, globalCss, language, country);
 	const siteConfigDetailed = {
+		brandName,
 		pages: sitePages?.map((page) => ({
 			title: page.title,
 			path: page.path,
