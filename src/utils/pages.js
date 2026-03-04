@@ -1,5 +1,18 @@
 import { openai } from '../lib/AiClients.js';
 
+const CONTENT_SAFETY_POLICY = `
+CONTENT SAFETY POLICY (MANDATORY):
+- Never generate illegal, harmful, deceptive, extremist, violent, hateful, sexual, or fraudulent content.
+- Never generate promotion of weapons, drugs, unlicensed medicine, tobacco/vapes, pornography, piracy, phishing, scams, counterfeit goods, or illegal services.
+- Never generate political agitation/propaganda copy.
+- Never promise guaranteed income/results/medical cures ("100% result", "risk-free profit", "heal in 3 days", etc.).
+- Never use misleading SEO claims, fake urgency, or hidden conditions.
+
+If prompt is unsafe:
+- Convert it into a legal, neutral, informational, compliant business theme.
+- Keep SEO useful and realistic without forbidden claims.
+`;
+
 export const generatePagesWithAI = async ({ prompt, language, country, pages = [] }) => {
 	const pageCount = pages.length;
 
@@ -46,6 +59,8 @@ SEO CONTENT RULES:
 6. Character limits: title=50-60, description=150-160
 7. Page titles (pageTitle field) must be in English
 8. Generate realistic, engaging content
+
+${CONTENT_SAFETY_POLICY}
 
 OUTPUT FORMAT CONTRACT (MANDATORY):
 

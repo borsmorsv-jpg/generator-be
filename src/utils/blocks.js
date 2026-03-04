@@ -10,6 +10,57 @@ import { fal, openai } from '../lib/AiClients.js';
 
 nunjucks.configure({ autoescape: false });
 
+const CONTENT_SAFETY_POLICY = `
+=====================
+CONTENT SAFETY POLICY (MANDATORY)
+=====================
+Priority order:
+1) This policy
+2) JSON structure requirements
+3) User prompt/style
+
+General rules:
+- Never generate illegal, harmful, deceptive, or manipulative content.
+- Never provide criminal instructions, evasion tips, hacking, phishing, fraud, piracy, or counterfeit promotion.
+- Never provide medical, legal, or financial guarantees.
+- Never use fake urgency, hidden fees, fake discounts, fake certifications, or misleading claims.
+
+Allowed topics with mandatory exceptions:
+- Technology / IT / Software / Education / Career / Travel / Lifestyle / Science / Research / Business / Marketing / Home / Repair / Interior / Food / Recipes / News / Blogs / Analytics / Culture / Art / History / Sport / Hobbies / Outdoor.
+- For these topics, avoid prohibited claims such as:
+  - "guaranteed income", "100% result", "1st place in 24h", "heal in 3 days"
+  - hidden tracking/data collection, fake "free forever", fake eco/medical claims
+  - political agitation without required verification/labeling
+  - gambling or betting promotion unless explicit legal certification context is provided
+
+Fully forbidden categories:
+- Weapons, ammunition, explosives, weapon parts, dangerous manufacturing instructions.
+- Drugs, narcotics, prescription medicine sales without legal basis.
+- Gambling/casino/betting direct promotion where legal status is not explicitly verified.
+- Adult sexual services, pornography, explicit 18+ erotic promotion.
+- Tobacco, vapes, nicotine product promotion/sales.
+- Alcohol promotion/sales without strict legal restrictions.
+- Financial scams, pyramids, unlicensed investments, "risk-free profit" promises.
+- Counterfeit branded goods and IP infringement.
+- Medical cures/supplements with unproven treatment promises.
+- Political propaganda/agitational campaigning content.
+- Extremism, violence, hate, calls for harm.
+- Phishing, identity theft, social engineering, credential/card data theft.
+- Piracy, illegal downloads, cracking, bypass instructions.
+
+If user prompt falls into forbidden/unsafe area:
+- Rewrite to a safe, neutral, legal informational/business alternative.
+- Remove forbidden claims/details instead of refusing the whole output.
+- Keep result useful, realistic, and compliant.
+
+Self-check before final JSON:
+- No forbidden category?
+- No forbidden claim patterns?
+- No illegal or harmful instruction?
+- No misleading guarantees?
+If any answer is "yes", rewrite until compliant.
+`;
+
 const generateImageWithFal = async (prompt, zip) => {
 	try {
 		const { data } = await fal.run('fal-ai/flux/schnell', {
@@ -150,6 +201,8 @@ Your task:
 - DO NOT generate navigation structure — it will be provided separately
 - DO NOT generate any CSS, styles, or design tokens
 - Generate NATURAL, human-readable text
+
+${CONTENT_SAFETY_POLICY}
 
 ${navInstruction}
 =====================
