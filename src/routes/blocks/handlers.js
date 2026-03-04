@@ -278,8 +278,11 @@ export const updateBlock = async (request, reply) => {
 		const description = request.body.description?.value;
 		const incomingCategory = request.body.category?.value;
 		const incomingIsActiveRaw = request.body.isActive?.value;
+		const isReusableAsChildren = request.body.isReusableAsChildren?.value;
 		const incomingIsActive =
 			incomingIsActiveRaw === undefined ? existing.isActive : incomingIsActiveRaw === 'true';
+		const incomingIsReusableAsChildren =
+			isReusableAsChildren === undefined ? existing.isReusableAsChildren : isReusableAsChildren === 'true';
 
 		const userId = '67366103-2833-41a8-aea2-10d589a0705c';
 
@@ -287,6 +290,7 @@ export const updateBlock = async (request, reply) => {
 			name: incomingName ?? existing.name,
 			category: incomingCategory ?? existing.category,
 			isActive: incomingIsActive,
+			isReusableAsChildren: incomingIsReusableAsChildren,
 			description,
 			updatedBy: userId,
 			updatedAt: new Date(),
