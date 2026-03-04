@@ -1,6 +1,6 @@
 import { db } from '../db/connection.js';
 import { blocks } from '../db/schema.js';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { downloadAndUnzipBlock } from './zipHandler.js';
 import * as sass from 'sass';
 import nunjucks from 'nunjucks';
@@ -132,14 +132,16 @@ const processImages = async (content, variables, zip) => {
 	return { content, totalFalCost };
 };
 
-export const getBlockByType = async (type, isReusable = false) => {
+export const getBlockByType = async (type, usedId = [], isReusable = false) => {
 	const conditions = [
         eq(blocks.category, type),
         eq(blocks.isActive, true)
     ];
 
-    if (isReusable) {
+	if (isReusable) {
         conditions.push(eq(blocks.isReusableAsChildren, isReusable));
+    } else if (usedId.length > 0) {
+        conditions.push(notInArray(blocks.id, usedId));
     }
 
 	const [block] = await db
@@ -161,6 +163,23 @@ export const getBlockByType = async (type, isReusable = false) => {
 		id: block.id,
 		...unzippedBlock,
 	};
+};
+
+export const getUniqueBlock = async (type, usedTypeIds = [], isReusable = false) => {
+    try {
+        const blockInfo = await getBlockByType(type, usedTypeIds, isReusable);
+        
+        return {
+            blockInfo,
+            updatedIds: isReusable ? usedTypeIds : [...usedTypeIds, blockInfo.id],
+        };
+    } catch (e) {
+        if (e.message.includes(`No active block found for type: ${type}`) && !isReusable) {
+            if (usedTypeIds.length === 0) throw e;
+            return await getUniqueBlock(type, [], isReusable);
+        }
+        throw e;
+    }
 };
 
 export const generateBlockContent = async (
@@ -841,7 +860,7 @@ export const expandedDefinition = async (
 		const currentRootKey = level === 0 ? key : rootKey;
 
 		allUsedKeys.push({ level, key, rootKey: currentRootKey });
-		const childBlockInfo = await getBlockByType(value.blockType, true);
+		const childBlockInfo = await getBlockByType(value.blockType, [], true);
 
 		if (!childBlockInfo) {
 			console.warn(`[Warning] There no block for type: ${value.blockType}`);
@@ -1080,3 +1099,26 @@ export const fillBrandName = (input, brandName) => {
     }
     return input;
 };
+
+export const fetchedUniqueBlocks = async (pagesBlocks) => {
+	const usedIdsMap = {};
+    const fetchedBlocks = [];
+    for (const blockDef of pagesBlocks) {
+        if (blockDef.isGlobal) {
+            fetchedBlocks.push(null);
+            continue;
+        }
+
+        if (!usedIdsMap[blockDef.type]) usedIdsMap[blockDef.type] = [];
+
+        const { blockInfo, updatedIds } = await getUniqueBlock(
+            blockDef.type,
+            usedIdsMap[blockDef.type]
+        );
+
+        usedIdsMap[blockDef.type] = updatedIds;
+        fetchedBlocks.push(blockInfo);
+    }
+
+    return fetchedBlocks;
+}

@@ -1,11 +1,11 @@
 import {
 	buildSitePages,
 	expandedDefinition,
+	fetchedUniqueBlocks,
 	fillAnchors,
 	fillBrandName,
 	flatPageBlocks,
 	generateTheme,
-	getBlockByType,
 	getBlocks,
 	prepareBlock,
 	prepareGlobalBlocks,
@@ -49,9 +49,13 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 
 		const globalBlocksMap = new Map(preparedGlobalBlocks.map((b) => [b.category, b]));
 
-		const pagesBlocks = flatPageBlocks(pages);
+		const pagesBlocks = flatPageBlocks(pages).map(block => ({
+				...block,
+				isGlobal: globalBlocksMap.has(block.type)
+    	}));
+		const fetchedBlocksData = await fetchedUniqueBlocks(pagesBlocks);
 		const generatedBlocks = await Promise.allSettled(
-			pagesBlocks.map(async (blockDef) => {
+			pagesBlocks.map(async (blockDef, index) => {
 				const isGlobal = globalBlocksMap.has(blockDef.type);
 				const baseInfo = {
 					pageIndex: blockDef.pageIndex,
@@ -68,7 +72,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 							...block,
 						};
 					} else {
-						const block = await getBlockByType(blockDef.type);
+						const block = fetchedBlocksData[index];
 						const {
 							newVariables: newVars,
 							usedKeys,
