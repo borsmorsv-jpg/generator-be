@@ -186,6 +186,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 			blocks: page.blocks,
 		})),
 		generatedTheme: globalCss,
+		seoPages: sitePages.map((page) => page.seo)
 	};
 
 	return {
