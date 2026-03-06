@@ -7,6 +7,7 @@ import nunjucks from 'nunjucks';
 import fs from 'fs/promises';
 import path from 'path';
 import { fal, openai } from '../lib/AiClients.js';
+import { PRICE_FOR_PROMPTS_FALAI } from '../config/constants.js';
 
 nunjucks.configure({ autoescape: false });
 
@@ -63,12 +64,12 @@ If any answer is "yes", rewrite until compliant.
 
 const generateImageWithFal = async (prompt, zip) => {
 	try {
-		const { data } = await fal.run('fal-ai/flux/schnell', {
+		const { data } = await fal.run(`fal-ai/flux/${PRICE_FOR_PROMPTS_FALAI.falModel}`, {
 			input: {
 				prompt: prompt,
 				negative_prompt: 'background, text, gradient, shadow, realistic, photo',
 				image_size: 'square_hd',
-				num_inference_steps: 4,
+				num_inference_steps: 24,
 				guidance_scale: 3.5,
 				sync_mode: true,
 			},
@@ -84,7 +85,7 @@ const generateImageWithFal = async (prompt, zip) => {
 
 		zip.addFile(zipPath, buffer);
 
-		const cost = ((image.width * image.height) / 1000000) * 0.0039;
+		const cost = ((image.width * image.height) / 1000000) * PRICE_FOR_PROMPTS_FALAI.perMegaPixel;
 
 		return {
 			url: zipPath,

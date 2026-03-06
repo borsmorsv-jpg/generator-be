@@ -5,6 +5,6 @@ export const PRICE_FOR_PROMPTS_OPENAI = {
 };
 
 export const PRICE_FOR_PROMPTS_FALAI = {
-	falModel: 'schnell',
-	perMegaPixel: 0.003,
+	falModel: 'dev',
+	perMegaPixel: 0.025,
 };

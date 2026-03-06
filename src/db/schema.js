@@ -27,6 +27,7 @@ export const blocks = pgTable('blocks', {
 	category: blockCategory('category').notNull(),
 	isActive: boolean('is_active').default(true).notNull(),
 	isReusableAsChildren: boolean('is_reusable_as_children').default(false).notNull(),
+	isParent: boolean('is_parent').default(false).notNull(),
 	archiveUrl: varchar('archive_url', { length: 1024 }).notNull(),
 	definition: jsonb('definition').notNull(),
 	description: text('description'),

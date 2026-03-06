@@ -45,6 +45,12 @@ export const createBlockSchema = {
 					value: { type: 'string', enum: ['true', 'false'] },
 				},
 			},
+			isParent: {
+				type: 'object',
+				properties: {
+					value: { type: 'string', enum: ['true', 'false'] },
+				},
+			},
 		},
 	},
 };
@@ -91,6 +97,10 @@ export const getAllBlocksSchema = {
 				enum: ['true', 'false'],
 			},
 			isReusableAsChildren: {
+				type: 'string',
+				enum: ['true', 'false'],
+			},
+			isParent: {
 				type: 'string',
 				enum: ['true', 'false'],
 			},
@@ -161,6 +171,12 @@ export const updateBlockSchema = {
 				},
 			},
 			isReusableAsChildren: {
+				type: 'object',
+				properties: {
+					value: { type: 'string', enum: ['true', 'false'] },
+				},
+			},
+			isParent: {
 				type: 'object',
 				properties: {
 					value: { type: 'string', enum: ['true', 'false'] },
