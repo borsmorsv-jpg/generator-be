@@ -197,22 +197,7 @@ export const generateSite = async ({ currentTokens, template, prompt, country, l
 			openAiTotalPrice,
 		},
 		sitePages,
-		siteConfigDetailed,
-		previews: sitePages.map((page) => ({
-			html: page.previewHtml,
-			filename: page.filename,
-			hasErrors: page.pageHasErrors,
-		})),
-		siteConfig: siteConfigDetailed?.pages?.map((page) => ({
-			...page,
-			blocks: page?.blocks?.map((block) => ({
-				blockId: block.blockId,
-				isGlobal: block.isGlobal,
-				blockType: block.blockType,
-				generationBlockId: block.generationBlockId,
-				hasError: block.hasError,
-			})),
-		})),
+		siteConfigDetailed
 	};
 };
 

@@ -76,6 +76,9 @@ export const sites = pgTable('sites', {
 	updatedBy: uuid('updated_by').references(() => profiles.userId, {
 		onDelete: 'set null',
 	}),
+	status: text('generation_status'),
+	operationType: text('operation_type'),
+	errorReason: text('error_reason'),
 	createdAt: timestamp('created_at').defaultNow().notNull(),
 	updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	promptTokens: integer('prompt_tokens'),

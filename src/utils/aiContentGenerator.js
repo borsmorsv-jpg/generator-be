@@ -15,7 +15,7 @@ async function generateImageWithFal(prompt) {
 			input: {
 				prompt: prompt,
 				image_size: 'landscape_16_9',
-				num_inference_steps: 24,
+				num_inference_steps: 4,
 				num_images: 1,
 			},
 		});

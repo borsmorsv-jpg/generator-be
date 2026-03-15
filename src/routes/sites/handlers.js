@@ -1,34 +1,13 @@
-import { db, supabase } from '../../db/connection.js';
+import { db } from '../../db/connection.js';
 import { profiles, sites, templates } from '../../db/schema.js';
 import { and, asc, count, desc, eq, gte, ilike, lte, sql } from 'drizzle-orm';
-import AdmZip from 'adm-zip';
 import { alias } from 'drizzle-orm/pg-core';
-import { PRICE_FOR_PROMPTS_OPENAI } from '../../config/constants.js';
-import slugify from 'slugify';
+import { GENERATION_STATUS, OPERATION_TYPE } from '../../config/constants.js';
 import {
 	buildSitePages,
-	expandedDefinition,
-	fillAnchors,
-	fillBrandName,
-	getBlockByType,
-	prepareBlock,
-	prepareGlobalBlocks,
-	transformToStructuredBlocks,
 } from '../../utils/blocks.js';
-import { filteredZip, replaceSiteZipWithNew } from '../../utils/archiveProcessor.js';
-import {
-	generateNginxConfig,
-	generateRobotsTxt,
-	generateSite,
-	generateSitemapXml,
-} from '../../utils/generator.js';
-import Decimal from 'decimal.js';
-
-function cutNumber(number, amountAfterDot) {
-	const safeNumber = number ?? 0;
-	const safePrecision = amountAfterDot ?? 0;
-	return new Decimal(safeNumber).toDecimalPlaces(safePrecision, Decimal.ROUND_DOWN).toNumber();
-}
+import { Worker } from "worker_threads"
+const WORKER_URL = "./src/workers/generatorWorker.js";
 
 export const createSite = async (request, reply) => {
 	try {
@@ -43,61 +22,6 @@ export const createSite = async (request, reply) => {
 			return reply.status(404).send({ error: 'Template not found' });
 		}
 
-		const currentTokens = {
-			totalPromptTokens: 0,
-			totalCompletionTokens: 0,
-			totalTokens: 0,
-			totalFalCost: 0,
-		};
-
-		const zip = new AdmZip();
-		const { tokens, siteConfig, sitePages, siteConfigDetailed, previews } = await generateSite({
-			currentTokens,
-			template,
-			prompt,
-			country,
-			language,
-			zip,
-		});
-
-		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, domain);
-		const nginxConfig = generateNginxConfig({ serverName: domain });
-		const robotsTxt = generateRobotsTxt(domain);
-
-		sitePages.forEach((page) => {
-			zip.addFile(page.filename, Buffer.from(page.html, 'utf8'));
-		});
-
-		if (!sitemapError) {
-			zip.addFile('sitemap.xml', Buffer.from(siteMapBody, 'utf8'));
-		}
-
-		if (nginxConfig) {
-			zip.addFile('nginx.conf', Buffer.from(nginxConfig, 'utf8'));
-		}
-
-		if (robotsTxt) {
-			zip.addFile('robots.txt', Buffer.from(robotsTxt, 'utf8'));
-		}
-
-		const zipBuffer = zip.toBuffer();
-		const safeName = slugify(`site-${name}-${new Date().getTime()}.zip`, {
-			lower: true,
-			strict: true,
-		});
-		const { error: uploadError } = await supabase.storage
-			.from('sites')
-			.upload(safeName, zipBuffer, {
-				contentType: 'application/zip',
-				upsert: false,
-			});
-
-		if (uploadError) {
-			throw uploadError;
-		}
-
-		const { data: urlData } = supabase.storage.from('sites').getPublicUrl(safeName);
-
 		const [siteData] = await db
 			.insert(sites)
 			.values({
@@ -105,33 +29,51 @@ export const createSite = async (request, reply) => {
 				name: name,
 				isActive: isActive,
 				trafficSource: trafficSource,
-				archiveUrl: urlData.publicUrl,
+				archiveUrl: "",
 				country: country,
 				language: language,
 				domain: domain,
 				definition: template.id,
 				prompt: prompt,
-				totalFalPrice: tokens.totalFalCost,
-				totalTokens: tokens.totalTokens,
-				completionTokens: tokens.totalCompletionTokens,
-				siteConfigDetailed: siteConfigDetailed,
-				promptTokens: tokens.totalPromptTokens,
-				inputUsdPrice: cutNumber(tokens.openAiInputPrice, 6),
-				outputUsdPrice: cutNumber(tokens.openAiOutputPrice, 6),
-				totalUsdPrice: cutNumber(tokens.openAiTotalPrice, 6),
+				totalFalPrice: 0,
+				totalTokens: 0,
+				completionTokens: 0,
+				promptTokens: 0,
+				inputUsdPrice: 0,
+				outputUsdPrice: 0,
+				totalUsdPrice: 0,
 				createdBy: '67366103-2833-41a8-aea2-10d589a0705c',
 				updatedBy: '67366103-2833-41a8-aea2-10d589a0705c',
+				status: GENERATION_STATUS.pending,
+				operationType: OPERATION_TYPE.create
 			})
 			.returning();
 
+		const worker = new Worker(WORKER_URL, {
+			workerData: {
+				process: "create",
+				siteId: siteData.id,
+				name,
+				template,
+				prompt, 
+				country, 
+				language,
+				domain
+			}
+		});
+
+		worker.on("error", async (msg) => {
+			await db
+			 .update(sites)
+			 .set({
+				status: GENERATION_STATUS.error,
+				errorReason: msg
+			 }).where(eq(sites.id, siteData.id));
+		})
 		return reply.status(201).send({
-			data: {
-				...siteData,
-				previews,
-				siteConfig,
-				siteConfigDetailed,
-			},
+			siteId: siteData.id,
 			success: true,
+			status: `Site with id - ${siteData.id} generation started. Wait until the new site is ready`,
 		});
 	} catch (error) {
 		return reply.status(500).send({ error: error.message });
@@ -314,6 +256,72 @@ export const getOneSite = async (request, reply) => {
 	}
 };
 
+export const checkStatusSite = async (request, reply) => {
+	try {
+		const { siteId } = request.params;
+
+		const [site] = await db
+			.select()
+			.from(sites)
+			.where(eq(sites.id, parseInt(siteId)));
+
+		const operationMessage = {
+			create: "Generating site...",
+			regenerate_site: "Regenerating site...",
+			regenerate_block: "Updating block..."
+		}
+
+		let siteData = {
+			generationStatus: null,
+			generationMessage: null,
+			generationError: null
+		};
+
+		siteData.generationStatus = site.status
+		siteData.generationMessage = operationMessage[site.operationType]
+
+		if(site.status === GENERATION_STATUS.success){
+			const sitePages = buildSitePages(
+				site.siteConfigDetailed.pages,
+				site.siteConfigDetailed.generatedTheme,
+				site.language,
+				site.country,
+			);
+			siteData.generationMessage = "Process ended with success"
+			siteData.data = {
+				...site,
+				previews: sitePages.map((page) => ({
+					html: page.previewHtml,
+					filename: page.filename,
+					hasErrors: page.pageHasErrors,
+				})),
+				siteConfig: site?.siteConfigDetailed?.pages?.map((page) => ({
+					...page,
+					blocks: page?.blocks?.map((block) => ({
+						blockId: block.blockId,
+						isGlobal: block.isGlobal,
+						blockType: block.blockType,
+						generationBlockId: block.generationBlockId,
+						hasError: block.hasError,
+					})),
+				})),
+				siteConfigDetailed: site.siteConfigDetailed,
+			}
+		}
+		if(site.status === GENERATION_STATUS.error){
+			siteData.generationMessage = "Process failed."
+			siteData.generationError = site.errorReason
+		}
+
+		reply.send(siteData);
+	} catch (error) {
+		reply.code(500).send({
+			success: false,
+			error: error.message,
+		});
+	}
+};
+
 export const activateSite = async (request, reply) => {
 	try {
 		const { siteId } = request.params;
@@ -361,14 +369,19 @@ export const regenerateSite = async (request, reply) => {
 			throw new Error(`Failed to find site with id "${siteId}"`);
 		}
 
+		if (site.status === GENERATION_STATUS.pending) {
+			return reply.status(400).send({
+				success: false,
+				error: "Generation already started. Please, wait until it ends." 
+			});
+		}
+		if (site.status === GENERATION_STATUS.error) {
+			return reply.status(400).send({
+				success: false,
+				error: "The previous site generation failed. Please, check the error details." 
+			});
+		}
 		const { prompt } = request.body;
-
-		const currentTokens = {
-			totalPromptTokens: site.promptTokens,
-			totalCompletionTokens: site.completionTokens,
-			totalTokens: site.totalTokens,
-			totalFalCost: site.totalFalPrice,
-		};
 
 		const template = await db.query.templates.findFirst({
 			where: eq(templates.id, site.definition),
@@ -378,63 +391,37 @@ export const regenerateSite = async (request, reply) => {
 			return reply.status(404).send({ error: 'Template not found' });
 		}
 
-		const zip = new AdmZip();
-		const { tokens, siteConfig, sitePages, siteConfigDetailed, previews } = await generateSite({
-			currentTokens,
-			template,
-			prompt,
-			country: site.country,
-			language: site.language,
-			zip,
+		await db
+				.update(sites)
+				.set({
+					status: GENERATION_STATUS.pending,
+					operationType: OPERATION_TYPE.regenerateSite,
+					updatedAt: new Date(),
+				})
+				.where(eq(sites.id, site.id));
+
+		const worker = new Worker(WORKER_URL, {
+			workerData: {
+				process: "regenerateSite",
+				siteId: site.id,
+				template,
+				prompt,
+				site
+			}
 		});
-
-		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, site.domain);
-		const nginxConfig = generateNginxConfig({ serverName: site.domain });
-
-		sitePages.forEach((page) => {
-			zip.addFile(page.filename, Buffer.from(page.html, 'utf8'));
-		});
-
-		if (!sitemapError) {
-			zip.addFile('sitemap.xml', Buffer.from(siteMapBody, 'utf8'));
-		}
-
-		const urlData = await replaceSiteZipWithNew(
-			sitePages,
-			site.name,
-			site.archiveUrl,
-			zip,
-			siteMapBody,
-			sitemapError,
-			nginxConfig,
-		);
-
-		const [siteData] = await db
-			.update(sites)
-			.set({
-				archiveUrl: urlData.publicUrl,
-				prompt: prompt,
-				totalTokens: tokens.totalTokens,
-				completionTokens: tokens.totalCompletionTokens,
-				siteConfigDetailed: siteConfigDetailed,
-				promptTokens: tokens.totalPromptTokens,
-				totalFalPrice: tokens.totalFalCost,
-				inputUsdPrice: cutNumber(tokens.openAiInputPrice, 6),
-				outputUsdPrice: cutNumber(tokens.openAiOutputPrice, 6),
-				totalUsdPrice: cutNumber(tokens.openAiTotalPrice, 6),
-				updatedBy: '67366103-2833-41a8-aea2-10d589a0705c',
-			})
-			.where(eq(sites.id, siteId))
-			.returning();
-
-		return reply.status(200).send({
-			data: {
-				...siteData,
-				previews,
-				siteConfig,
-				siteConfigDetailed,
-			},
+		
+		worker.on("error", async (msg) => {
+			await db
+			 .update(sites)
+			 .set({
+				status: GENERATION_STATUS.error,
+				errorReason: msg
+			 }).where(eq(sites.id, site.id));
+		})
+		return reply.status(201).send({
+			siteId: site.id,
 			success: true,
+			status: `Site with id - ${site.id} regeneration started. Wait until the new site is ready`,
 		});
 	} catch (err) {
 		reply.status(500).send({
@@ -459,192 +446,52 @@ export const regenerateBlock = async (request, reply) => {
 		if (!site) {
 			throw new Error(`Failed to find site with id "${siteId}"`);
 		}
-
-		const block = await getBlockByType(blockType);
-
-		const tokensInfo = {
-			totalPromptTokens: site.promptTokens,
-			totalCompletionTokens: site.completionTokens,
-			totalTokens: site.totalTokens,
-			totalFalCost: site.totalFalPrice,
-		};
-
-		let generatedBlock;
-
-		const regeneratingPage = site.siteConfigDetailed?.pages.find(
-			(page) => page.filename === pageName,
-		);
-		const currentSiteZip = await filteredZip(
-			site.archiveUrl,
-			regeneratingPage,
-			generationBlockId,
-		);
-
-		if (isBlockGlobal) {
-			const [preparedBlock] = await prepareGlobalBlocks(
-				[block],
-				site.siteConfigDetailed?.pages,
-				site.prompt || prompt,
-				site.country,
-				site.language,
-				currentSiteZip,
-			);
-			const blockWithBrandName = fillBrandName(preparedBlock, site.siteConfigDetailed.brandName)
-			tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
-			tokensInfo.totalCompletionTokens += preparedBlock.tokens.completionTokens;
-			tokensInfo.totalTokens += preparedBlock.tokens.totalTokens;
-			tokensInfo.totalFalCost += preparedBlock.tokens.totalFalCost;
-			generatedBlock = blockWithBrandName;
-		} else {
-			const {
-				newVariables: newVars,
-				usedKeys,
-				contents,
-			} = await expandedDefinition(block.definition);
-			const expandedBlock = { ...block, definition: { variables: newVars } };
-			const preparedBlock = await prepareBlock(
-				expandedBlock,
-				site.prompt || prompt,
-				site.country,
-				site.language,
-				null,
-				currentSiteZip,
-			);
-			const blockWithBrandName = fillBrandName(preparedBlock, site.siteConfigDetailed.brandName)
-			tokensInfo.totalPromptTokens += preparedBlock.tokens.promptTokens;
-			tokensInfo.totalCompletionTokens += preparedBlock.tokens.completionTokens;
-			tokensInfo.totalTokens += preparedBlock.tokens.totalTokens;
-			tokensInfo.totalFalCost += preparedBlock.tokens.totalFalCost;
-
-			generatedBlock = { ...blockWithBrandName, additionalInfo: { usedKeys, contents } };
+		if (site.status === GENERATION_STATUS.pending) {
+			return reply.status(400).send({
+				success: false,
+				error: "Generation already started. Please, wait until it ends." 
+			});
 		}
+		if (site.status === GENERATION_STATUS.error) {
+			return reply.status(400).send({
+				success: false,
+				error: "The previous site generation failed. Please, check the error details." 
+			});
+		}
+		await db
+				.update(sites)
+				.set({
+					status: GENERATION_STATUS.pending,
+					operationType: OPERATION_TYPE.regenerateBlock,
+					updatedAt: new Date(),
+				})
+				.where(eq(sites.id, site.id));
 
-		const updatedPages = site.siteConfigDetailed?.pages?.map((page, index) => {
-			const shouldUpdatePage = isBlockGlobal || page.filename === pageName;
-
-			if (!shouldUpdatePage) {
-				return page;
+		const worker = new Worker(WORKER_URL, {
+			workerData: {
+				process: "regenerateBlock",
+				siteId,
+				blockType,
+				prompt,
+				site,
+				generationBlockId,
+				isBlockGlobal,
+				pageName
 			}
-
-			return {
-				...page,
-				seo: site.siteConfigDetailed.seoPages[index],
-				blocks: page.blocks.map((block, blockIndex) => {
-					const generationBlockMatch = block.generationBlockId === generationBlockId;
-					const globalTypeMatch =
-						isBlockGlobal && block.blockType === generatedBlock.category;
-					if (generationBlockMatch || globalTypeMatch) {
-						return {
-							id: generatedBlock.id,
-							isGlobal: isBlockGlobal,
-							blockType: generatedBlock.category,
-							category: generatedBlock.category,
-							blockIndex: blockIndex,
-							generationBlockId: `${generatedBlock.category}-${blockIndex}`,
-							definition: generatedBlock.definition,
-							variables: generatedBlock.variables,
-							hasError: false,
-							css: generatedBlock.css,
-							html: generatedBlock.html,
-							additionalInfo: generatedBlock.additionalInfo,
-						};
-					}
-
-					return {
-						...block,
-						id: block.blockId,
-						category: block.blockType,
-						additionalInfo: {
-							usedKeys: [],
-							contents: [],
-						},
-					};
-				}),
-			};
 		});
-
-		const updatedPagesWithAnchor = fillAnchors(updatedPages, isBlockGlobal ? '' : pageName);
-		const blocksCollection = transformToStructuredBlocks(updatedPagesWithAnchor);
-
-		const sitePages = buildSitePages(
-			blocksCollection,
-			site.siteConfigDetailed.generatedTheme,
-			site.language,
-			site.country,
-		);
-
-		const { siteMapBody, hasError: sitemapError } = generateSitemapXml(sitePages, site.domain);
-
-		const nginxConfig = generateNginxConfig({ serverName: site.domain });
-
-		const robotsTxt = generateRobotsTxt(site.domain);
-
-		const urlData = await replaceSiteZipWithNew(
-			sitePages,
-			site.name,
-			site.archiveUrl,
-			currentSiteZip,
-			siteMapBody,
-			sitemapError,
-			nginxConfig,
-			robotsTxt
-		);
-
-		const siteConfigDetailed = {
-			brandName: site.siteConfigDetailed.brandName,
-			pages: sitePages?.map((page) => ({
-				title: page.title,
-				path: page.path,
-				filename: page.filename,
-				blocks: page.blocks,
-			})),
-			generatedTheme: site.siteConfigDetailed.generatedTheme,
-			seoPages: site.siteConfigDetailed.seoPages,
-		};
-		const inputPrice =
-			tokensInfo.totalPromptTokens * (PRICE_FOR_PROMPTS_OPENAI.input / 1000000);
-		const outputPrice =
-			tokensInfo.totalCompletionTokens * (PRICE_FOR_PROMPTS_OPENAI.output / 1000000);
-		const totalPrice = inputPrice + outputPrice;
-
-		const [siteData] = await db
-			.update(sites)
-			.set({
-				archiveUrl: urlData.publicUrl,
-				totalTokens: tokensInfo.totalTokens,
-				completionTokens: tokensInfo.totalCompletionTokens,
-				promptTokens: tokensInfo.totalPromptTokens,
-				totalFalPrice: tokensInfo.totalFalCost,
-				inputUsdPrice: cutNumber(inputPrice, 6),
-				outputUsdPrice: cutNumber(outputPrice, 6),
-				totalUsdPrice: cutNumber(totalPrice, 6),
-				updatedBy: '67366103-2833-41a8-aea2-10d589a0705c',
-				siteConfigDetailed,
-			})
-			.where(eq(sites.id, siteId))
-			.returning();
-
+		
+		worker.on("error", async (msg) => {
+			await db
+			 .update(sites)
+			 .set({
+				status: GENERATION_STATUS.error,
+				errorReason: msg
+			 }).where(eq(sites.id, site.id));
+		})
 		return reply.status(201).send({
-			data: {
-				...siteData,
-				previews: sitePages.map((page) => ({
-					html: page.previewHtml,
-					filename: page.filename,
-					hasErrors: page.pageHasErrors,
-				})),
-				siteConfig: siteConfigDetailed?.pages?.map((page) => ({
-					...page,
-					blocks: page?.blocks?.map((block) => ({
-						blockId: block.blockId,
-						isGlobal: block.isGlobal,
-						blockType: block.blockType,
-						generationBlockId: block.generationBlockId,
-						hasError: block.hasError,
-					})),
-				})),
-				siteConfigDetailed,
-			},
+			siteId: siteId,
 			success: true,
+			status: `Site with id - ${siteId} block regeneration started. Wait until the new block is ready`,
 		});
 	} catch (err) {
 		reply.status(500).send({
