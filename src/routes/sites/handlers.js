@@ -223,18 +223,21 @@ export const getOneSite = async (request, reply) => {
 			.where(eq(sites.id, parseInt(siteId)));
 
 
-		const previews = site.status === "error" 
-			? "" 
-			: buildSitePages(
-				site.siteConfigDetailed?.pages,
-				site.siteConfigDetailed?.generatedTheme,
-				site.language,
-				site.country
-			).map(({ previewHtml, filename, pageHasErrors }) => ({
-				html: previewHtml,
-				filename,
-				hasErrors: pageHasErrors,
-		}));
+		const hasPages = site.siteConfigDetailed?.pages;
+        const isSuccess = site.status !== "error";
+
+        const previews = (isSuccess && hasPages) 
+            ? buildSitePages(
+                site.siteConfigDetailed.pages,
+                site.siteConfigDetailed.generatedTheme,
+                site.language,
+                site.country
+            ).map(({ previewHtml, filename, pageHasErrors }) => ({
+                html: previewHtml,
+                filename,
+                hasErrors: pageHasErrors,
+            }))
+            : "";
 
 		reply.send({
 			success: true,
