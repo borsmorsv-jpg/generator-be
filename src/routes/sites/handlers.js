@@ -453,24 +453,22 @@ export const regenerateBlock = async (request, reply) => {
 		}
 		if (site.status === GENERATION_STATUS.pending) {
 			return reply.status(400).send({
-				success: false,
-				error: "Generation already started. Please, wait until it ends." 
+				error: "Generation already started. Please, wait until it ends."
 			});
 		}
-		if (site.status === GENERATION_STATUS.error) {
+		if (!site.siteConfigDetailed?.pages && site.status === GENERATION_STATUS.error) {
 			return reply.status(400).send({
-				success: false,
-				error: "The previous site generation failed. Please, check the error details." 
+				error: "The previous site generation failed. Please, check the error details."
 			});
 		}
 		await db
-				.update(sites)
-				.set({
-					status: GENERATION_STATUS.pending,
-					operationType: OPERATION_TYPE.regenerateBlock,
-					updatedAt: new Date(),
-				})
-				.where(eq(sites.id, site.id));
+			.update(sites)
+			.set({
+				status: GENERATION_STATUS.pending,
+				operationType: OPERATION_TYPE.regenerateBlock,
+				updatedAt: new Date(),
+			})
+			.where(eq(sites.id, site.id));
 
 		const worker = new Worker(WORKER_URL, {
 			workerData: {
@@ -484,14 +482,14 @@ export const regenerateBlock = async (request, reply) => {
 				pageName
 			}
 		});
-		
+
 		worker.on("error", async (msg) => {
 			await db
-			 .update(sites)
-			 .set({
-				status: GENERATION_STATUS.error,
-				errorReason: msg
-			 }).where(eq(sites.id, site.id));
+				.update(sites)
+				.set({
+					status: GENERATION_STATUS.error,
+					errorReason: msg
+				}).where(eq(sites.id, site.id));
 		})
 		return reply.status(201).send({
 			siteId: siteId,
