@@ -222,11 +222,7 @@ export const getOneSite = async (request, reply) => {
 			.from(sites)
 			.where(eq(sites.id, parseInt(siteId)));
 
-
-		const hasPages = site.siteConfigDetailed?.pages;
-        const isSuccess = site.status !== "error";
-
-        const previews = (isSuccess && hasPages) 
+        const previews = site.siteConfigDetailed?.pages
             ? buildSitePages(
                 site.siteConfigDetailed.pages,
                 site.siteConfigDetailed.generatedTheme,
@@ -237,7 +233,7 @@ export const getOneSite = async (request, reply) => {
                 filename,
                 hasErrors: pageHasErrors,
             }))
-            : "";
+            : null;
 
 		reply.send({
 			success: true,

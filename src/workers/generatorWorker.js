@@ -316,7 +316,8 @@ switch(process) {
                 totalUsdPrice: cutNumber(totalPrice, 6),
                 updatedBy: '67366103-2833-41a8-aea2-10d589a0705c',
                 siteConfigDetailed,
-                status: GENERATION_STATUS.success
+                status: GENERATION_STATUS.success,
+                errorReason: null
             })
             .where(eq(sites.id, siteId))
         break;

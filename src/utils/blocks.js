@@ -175,11 +175,25 @@ export const getUniqueBlock = async (type, usedTypeIds = [], isReusable = false)
             updatedIds: isReusable ? usedTypeIds : [...usedTypeIds, blockInfo.id],
         };
     } catch (e) {
+		const baseBlock = {
+			type: type,
+			category: type,
+		};
         if (e.message.includes(`No active block found for type: ${type}`) && !isReusable) {
-            if (usedTypeIds.length === 0) throw e;
+            if (usedTypeIds.length === 0) {
+				return {
+					...baseBlock,
+					hasError: true,
+					error: e?.message,
+				};
+			};
             return await getUniqueBlock(type, [], isReusable);
         }
-        throw e;
+        return {
+			...baseBlock,
+			hasError: true,
+			error: e?.message,
+		};
     }
 };
 
