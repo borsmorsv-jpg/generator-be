@@ -453,12 +453,16 @@ export const regenerateBlock = async (request, reply) => {
 		}
 		if (site.status === GENERATION_STATUS.pending) {
 			return reply.status(400).send({
-				error: "Generation already started. Please, wait until it ends."
+				success: false,
+				error: "Generation already started. Please, wait until it ends.",
+				debugMessage: "Regeneration in progress!"
 			});
 		}
 		if (!site.siteConfigDetailed?.pages && site.status === GENERATION_STATUS.error) {
 			return reply.status(400).send({
-				error: "The previous site generation failed. Please, check the error details."
+				success: false,
+				error: "The previous site generation failed. Please, check the error details." ,
+				debugMessage: "Regeneration has error!"
 			});
 		}
 		await db
@@ -495,11 +499,13 @@ export const regenerateBlock = async (request, reply) => {
 			siteId: siteId,
 			success: true,
 			status: `Site with id - ${siteId} block regeneration started. Wait until the new block is ready`,
+			debugMessage: "Regeneration ok!"
 		});
 	} catch (err) {
 		reply.status(500).send({
 			error: err.message,
 			success: false,
+			debugMessage: "Regeneration critical error!!"
 		});
 	}
 };
